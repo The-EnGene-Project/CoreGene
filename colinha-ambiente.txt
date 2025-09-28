@@ -1,0 +1,29 @@
+na pasta build/ de cada projeto:
+(tenha um .gitkeep dentro)
+
+cmake -G "MinGW Makefiles" ..
+
+pra gerar o executável:
+
+mingw32-make
+
+no settings.json:
+
+{
+    "terminal.integrated.profiles.windows": {
+        "Comp-Graf (MinGW PowerShell)": {
+            // Usamos 'pwsh.exe' (PowerShell 7+) ou 'powershell.exe' (Windows PowerShell 5.1)
+            "path": "powershell.exe", 
+            "args": [
+                // Não sai do terminal após executar o script
+                "-NoExit",
+                // Executa o nosso script de configuração de ambiente
+                "-File",
+                "${workspaceFolder}\\setup_env.ps1"
+            ],
+            "icon": "terminal-powershell"
+        }
+    },
+    // Define este perfil como o padrão para esta área de trabalho
+    "terminal.integrated.defaultProfile.windows": "Comp-Graf (MinGW PowerShell)"
+}

@@ -9,6 +9,7 @@ include_directories(
     "${CMAKE_SOURCE_DIR}/libs/glad/include"
     "${CMAKE_SOURCE_DIR}/libs/glfw/include"
     "${CMAKE_SOURCE_DIR}/libs/glm/include"
+    "${CMAKE_SOURCE_DIR}/libs/stb/include"
 )
 
 # Adiciona o caminho para as bibliotecas de linkagem

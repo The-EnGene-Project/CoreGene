@@ -2,34 +2,34 @@
 #define SCENE_H
 #pragma once
 
-#include <memory>
-#include <unordered_map>
-#include <string>
 #include <vector>
+#include <string>
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <cmath>
+#include <iostream>
 
-#include "gl_base/shader.h"
-#include "gl_base/transform.h"
 #include "node.h"
 
+// Encapsulamos toda a lógica de desenho em um namespace para organização.
 namespace scene {
 
 class SceneGraph;
 using SceneGraphPtr = std::shared_ptr<SceneGraph>;
 
-class SceneGraphVisitor;
-
 class SceneGraph {
 private:
-    node::NodePtr root;
-    shader::ShaderPtr base_shader;
-    std::unordered_map<std::string, node::NodePtr> name_map; // Mapa de nomes para nós
-    std::unordered_map<int, node::NodePtr> node_map; // Mapa de IDs para nós
-    node::NodePtr currentNode; // Nó atualmente selecionado
+    NodePtr root;
+    ShaderPtr base_shader;
+    std::map<std::string, NodePtr> name_map; // Mapa de nomes para nós
+    std::map<int, NodePtr> node_map; // Mapa de IDs para nós
+    NodePtr currentNode; // Nó atualmente selecionado
     transform::TransformPtr view_transform;
 
     
-    SceneGraph(shader::ShaderPtr base) {
-        root = node::Node::Make("root");
+    SceneGraph(ShaderPtr base) {
+        root = Node::Make("root", nullptr, base, transform::Transform::Make());
         base_shader = base;
         currentNode = root;
         name_map["root"] = root;
@@ -40,9 +40,7 @@ private:
 
     friend SceneGraphPtr graph();
 
-    friend class SceneGraphVisitor;
-
-    void registerNode(node::NodePtr node) {
+    void registerNode(NodePtr node) {
         name_map[node->getName()] = node;
         node_map[node->getId()] = node;
         currentNode = node;
@@ -51,15 +49,15 @@ private:
 protected:
 
     // BACALHAU
-    node::NodePtr getRoot() const {
+    NodePtr getRoot() const {
         return root;
     }
 
-    node::NodePtr getCurrentNode() const {
+    NodePtr getCurrentNode() const {
         return currentNode;
     }
 
-    node::NodePtr getNodeByName(const std::string& name) {
+    NodePtr getNodeByName(const std::string& name) {
         auto it = name_map.find(name);
         if (it != name_map.end()) {
             currentNode = it->second;
@@ -68,7 +66,7 @@ protected:
         return nullptr;
     }
 
-    node::NodePtr getNodeById(int id) {
+    NodePtr getNodeById(int id) {
         auto it = node_map.find(id);
         if (it != node_map.end()) {
             currentNode = it->second;
@@ -79,7 +77,7 @@ protected:
 
 public:
 
-    void addNode(node::NodePtr node, node::NodePtr parent = nullptr) {
+    void addNode(NodePtr node, NodePtr parent = nullptr) {
         if (!parent) {
             parent = root;
         }
@@ -87,25 +85,24 @@ public:
         registerNode(node);
     }
 
-    void addNode(const std::string& name, node::NodePtr parent = nullptr) {
+    void addNode(const std::string& name, GeometryPtr geometry = nullptr, ShaderPtr shader = nullptr, transform::TransformPtr transform = nullptr, NodePtr parent = nullptr) {
         if (name_map.find(name) != name_map.end()) {
             std::cerr << "Node with name " << name << " already exists!" << std::endl;
             return;
         }
-        if (!parent) {
-            parent = root;
+        if (!transform) {
+            transform = transform::Transform::Make();
         }
-        node::NodePtr new_node = node::Node::Make(name);
-        parent->addChild(new_node);
-        registerNode(new_node);
+        NodePtr new_node = Node::Make(name, geometry, shader, transform);
+        addNode(new_node, parent);
     }
 
-    void addNodeToCurrent(const std::string& name) {
-        addNode(name, currentNode);
+    void addNodeToCurrent(const std::string& name, GeometryPtr geometry = nullptr, ShaderPtr shader = nullptr, transform::TransformPtr transform = nullptr) {
+        addNode(name, geometry, shader, transform, currentNode);
     }
 
     void lookAtNode(const std::string& name) {
-        node::NodePtr node = getNodeByName(name);
+        NodePtr node = getNodeByName(name);
         if (node) {
             currentNode = node;
         } else {
@@ -113,13 +110,30 @@ public:
         }
     }
 
-    void addComponentToCurrentNode(component::ComponentPtr new_component) {
-        currentNode->addComponent(new_component);
+    void lookAtNode(int id) {
+        NodePtr node = getNodeById(id);
+        if (node) {
+            currentNode = node;
+        } else {
+            std::cerr << "Node with id " << id << " not found!" << std::endl;
+        }
     }
 
-    void moveCurrentNodeTo(node::NodePtr new_parent) {
+    void setCurrentNodeShader(ShaderPtr shader) {
+        currentNode->setShader(shader);
+    }
+
+    void setCurrentNodeGeometry(GeometryPtr geometry) {
+        currentNode->setGeometry(geometry);
+    }
+
+    void setCurrentNodeTransform(transform::TransformPtr transform) {
+        currentNode->setTransform(transform);
+    }
+
+    void moveCurrentNodeTo(NodePtr new_parent) {
         if (new_parent) {
-            node::NodePtr old_parent = currentNode->getParent();
+            NodePtr old_parent = currentNode->getParent();
             if (old_parent) {
                 old_parent->removeChild(currentNode);
             }
@@ -130,9 +144,9 @@ public:
     }
 
     void moveCurrentNodeTo(const std::string& new_parent_name) {
-        node::NodePtr new_parent = getNodeByName(new_parent_name);
+        NodePtr new_parent = getNodeByName(new_parent_name);
         if (new_parent) {
-            node::NodePtr old_parent = currentNode->getParent();
+            NodePtr old_parent = currentNode->getParent();
             if (old_parent) {
                 old_parent->removeChild(currentNode);
             }
@@ -143,7 +157,7 @@ public:
     }
 
     void moveToPositionUnderParent(const int position) {
-        node::NodePtr parent = currentNode->getParent();
+        NodePtr parent = currentNode->getParent();
         if (parent) {
             if (position < 0 || position >= parent->getChildCount()) {
                 std::cerr << "Position out of bounds in moveToPositionUnderParent" << std::endl;
@@ -174,7 +188,7 @@ public:
     }
 
     void removeCurrentNode() {
-        node::NodePtr parent = currentNode->getParent();
+        NodePtr parent = currentNode->getParent();
         if (parent) {
             parent->removeChild(currentNode);
         }
@@ -182,47 +196,39 @@ public:
         node_map.erase(currentNode->getId());
     }
 
-    // TODO: BACALHAU fazer esta função de fato copiar cada membro do node
-    // ainda falta copiar a coleção de componentes
     void duplicateNode(const std::string& name, const std::string& new_name) {
-        if (name_map.find(name) != name_map.end()) {
-            std::cerr << "Node with name " << name << " already exists!" << std::endl;
-            return;
-        }
-        node::NodePtr node = getNodeByName(name);
+        NodePtr node = getNodeByName(name);
         if (node) {
-            node::NodePtr new_node = node::Node::Make(
+            NodePtr new_node = Node::Make(
                 new_name, 
+                node->getGeometry(), 
+                node->getShader(), 
+                transform::Transform::Make(node->getTransform()->getMatrix()), 
                 node->getParent()
             );
             node->getParent()->addChild(new_node);
             name_map[new_name] = new_node;
             node_map[new_node->getId()] = new_node;
             currentNode = new_node;
-            registerNode(new_node);
         } else {
             std::cerr << "Node with name " << name << " not found!" << std::endl;
         }
     }
 
-    void addSibling(const std::string& name) {
-        if (name_map.find(name) != name_map.end()) {
-            std::cerr << "Node with name " << name << " already exists!" << std::endl;
-            return;
-        }
-        node::NodePtr parent = currentNode->getParent();
+    void addSibling(const std::string& name, GeometryPtr geometry = nullptr, ShaderPtr shader = nullptr, transform::TransformPtr transform = nullptr) {
+        NodePtr parent = currentNode->getParent();
         if (parent) {
-            addNode(name, parent);
+            addNode(name, geometry, shader, transform, parent);
         } else {
             std::cerr << "Current node has no parent!" << std::endl;
         }
     }
 
-    void addSiblingAfter(node::NodePtr new_sibling, const std::string& node_to_add_after = "") {
+    void addSiblingAfter(NodePtr new_sibling, const std::string& node_to_add_after = "") {
         if (!node_to_add_after.empty()) {
-            node::NodePtr after = getNodeByName(node_to_add_after);
+            NodePtr after = getNodeByName(node_to_add_after);
             if (after) {
-                node::NodePtr parent = after->getParent();
+                NodePtr parent = after->getParent();
                 if (parent) {
                     parent->addChildAfter(new_sibling, after);
                     registerNode(new_sibling);
@@ -235,9 +241,9 @@ public:
             return;
         }
         
-        node::NodePtr parent = currentNode->getParent();
+        NodePtr parent = currentNode->getParent();
         if (parent) {
-            node::NodePtr after = currentNode;
+            NodePtr after = currentNode;
             parent->addChildAfter(new_sibling, after);
             registerNode(new_sibling);
         } else {
@@ -245,21 +251,62 @@ public:
         }
     }
 
-    void addSiblingAfter(const std::string& name, const std::string& node_to_add_after = "") {
-        if (name_map.find(name) != name_map.end()) {
-            std::cerr << "Node with name " << name << " already exists!" << std::endl;
-            return;
+    void addSiblingAfter(const std::string& name, GeometryPtr geometry = nullptr, ShaderPtr shader = nullptr, transform::TransformPtr transform = nullptr, const std::string& node_to_add_after = "") {
+        if (transform == nullptr) {
+            transform = transform::Transform::Make();
         }
-        addSiblingAfter(node::Node::Make(name), node_to_add_after);
+        addSiblingAfter(Node::Make(name, geometry, shader, transform), node_to_add_after);
+    }
+
+    // encapsula as funções do transform para o current node
+
+    void translateCurrentNode(float delta_x, float delta_y, float delta_z) {
+        currentNode->getTransform()->translate(delta_x, delta_y, delta_z);
+    }
+
+    void rotateCurrentNode(float angle, float axis_x, float axis_y, float axis_z) {
+        currentNode->getTransform()->rotate(angle, axis_x, axis_y, axis_z);
+    }
+
+    void rotateCurrentNode(float angle) {
+        rotateCurrentNode(angle, 0.0f, 0.0f, 1.0f);
+    }
+
+    void scaleCurrentNode(float x, float y, float z) {
+        currentNode->getTransform()->scale(x, y, z);
+    }
+
+    void setTranslateCurrentNode(float x, float y, float z) {
+        currentNode->getTransform()->setTranslate(x, y, z);
+    }
+
+    void setRotateCurrentNode(float angle, float axis_x, float axis_y, float axis_z) {
+        currentNode->getTransform()->setRotate(angle, axis_x, axis_y, axis_z);
+    }
+
+    void setRotateCurrentNode(float angle) {
+        setRotateCurrentNode(angle, 0.0f, 0.0f, 1.0f);
+    }
+
+    void setScaleCurrentNode(float x, float y, float z) {
+        currentNode->getTransform()->setScale(x, y, z);
+    }
+
+    void resetTransformCurrentNode() {
+        currentNode->getTransform()->reset();
+    }
+
+    void setTransformCurrentNode(glm::mat4 transform) {
+        currentNode->getTransform()->setMatrix(transform);
+    }
+
+    void setTransformCurrentNode(transform::TransformPtr transform) {
+        currentNode->setTransform(transform);
     }
 
     void newNodeAbove(const std::string& new_name) {
-        if (name_map.find(new_name) != name_map.end()) {
-            std::cerr << "Node with name " << new_name << " already exists!" << std::endl;
-            return;
-        }
-        node::NodePtr old_current = currentNode, old_parent = currentNode->getParent();
-        addSiblingAfter(node::Node::Make(new_name));
+        NodePtr old_current = currentNode, old_parent = currentNode->getParent();
+        addSiblingAfter(Node::Make(new_name));
         currentNode->addChild(old_current);
         old_parent->removeChild(old_current);
         old_current->setParent(currentNode);
@@ -268,11 +315,11 @@ public:
         // goes to parent finds the current node stores the current node 
         // then adds a new node where the current one was relative to the parent
         // and adds the previous current node as a child to the created node
-        // node::NodePtr parent = currentNode->getParent();
+        // NodePtr parent = currentNode->getParent();
         // if (parent) {
             
         //     int idx = -1;
-        //     node::NodePtr new_node = node::Node::Make(name, nullptr, nullptr, transform::Transform::Make());
+        //     NodePtr new_node = Node::Make(name, nullptr, nullptr, transform::Transform::Make());
         //     idx = parent->getChildIndex(currentNode);
         //     if (idx != -1) {
         //         parent->removeChild(currentNode);
@@ -290,11 +337,14 @@ public:
 
     void newNodeAbove() {
         std::string new_name = currentNode->getName() + "_parent";
-        while (name_map.find(new_name) != name_map.end()) {
-            new_name += "_new";
-        }
         newNodeAbove(new_name);
     }
+    
+
+
+
+
+
 
     void setView(float left, float right, float bottom, float top, float near, float far) {
         view_transform->orthographic(left, right, bottom, top, near, far);
@@ -307,7 +357,7 @@ public:
     }
 
     void clearGraph() {
-        root = node::Node::Make("root");
+        root = Node::Make("root", nullptr, base_shader, transform::Transform::Make());
         currentNode = root;
         name_map.clear();
         node_map.clear();
@@ -320,29 +370,25 @@ public:
     void draw(bool print = false) {
         // Aplica a transformação de visão
         transform::stack()->push(view_transform->getMatrix());
-        shader::stack()->push(base_shader);
         if (root) {
             root->draw(print);
         }
         transform::stack()->pop();
-        shader::stack()->pop();
         if (print) printf("\n--------------------------------\n\n");
     }
 
-    void drawSubtree(node::NodePtr node, bool print = false) {
+    void drawSubtree(NodePtr node, bool print = false) {
         // Aplica a transformação de visão
         transform::stack()->push(view_transform->getMatrix());
-        shader::stack()->push(base_shader);
         if (node) {
             node->draw(print);
         }
         transform::stack()->pop();
-        shader::stack()->pop();
         if (print) printf("\n--------------------------------\n\n");
     }
 
     void drawSubtree(const std::string& node_name) {
-        node::NodePtr node = getNodeByName(node_name);
+        NodePtr node = getNodeByName(node_name);
         if (node) {
             drawSubtree(node);
         } else {
@@ -351,7 +397,7 @@ public:
     }
 
     void drawSubtree(const int node_id) {
-        node::NodePtr node = getNodeById(node_id);
+        NodePtr node = getNodeById(node_id);
         if (node) {
             drawSubtree(node);
         } else {
@@ -361,7 +407,7 @@ public:
 };
     
 inline SceneGraphPtr graph() {
-    static shader::ShaderPtr default_shader = shader::Shader::Make();
+    static ShaderPtr default_shader = Shader::Make();
     static SceneGraphPtr instance = SceneGraphPtr(new SceneGraph(default_shader));
     return instance;
 }

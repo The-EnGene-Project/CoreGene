@@ -10,8 +10,9 @@ enum class ComponentPriority {
     TRANSFORM = 100,
     CAMERA = 200,      // Example for later
     SHADER = 300,
-    SHAPE = 400,       // Drawing should happen last
-    CUSTOM_SCRIPT = 500
+    APPEARANCE = 400,
+    GEOMETRY = 500,       // Drawing should happen last
+    CUSTOM_SCRIPT = 600
 };
 
 class Component;
@@ -33,7 +34,9 @@ protected:
 
     explicit Component(ComponentPriority p) :
     priority(static_cast<int>(p))
-    {}
+    {
+        id = next_id++;
+    }
 
 public:
     virtual void apply() {}

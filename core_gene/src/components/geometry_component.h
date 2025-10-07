@@ -17,7 +17,7 @@ private:
 protected:
 
     GeometryComponent(geometry::GeometryPtr g) :
-        Component(),
+        Component(ComponentPriority::GEOMETRY),
         m_geometry(g)
         {}
 

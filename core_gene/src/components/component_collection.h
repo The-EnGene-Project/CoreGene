@@ -27,7 +27,7 @@ public:
     }
 
     // TODO: BACALHAU checar indice e repensar como achar o componente a ser removido...
-    void removeComponent(int index) {
+    void removeComponentByIndex(int index) {
         components.erase(components.begin() + index);
     }
 

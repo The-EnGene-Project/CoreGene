@@ -8,7 +8,8 @@
 #include <string>
 #include <iostream>
 #include "gl_base/error.h"
-#include "../components/component_collection.h"
+#include "components/component_collection.h"
+#include "components/component.h"
 
 // #include "geometry.h"
 // #include "transform.h"
@@ -60,6 +61,10 @@ protected:
         applicability = new_applicability;
     }
 
+    ComponentCollection getCollectionCopy() {
+        return components.copy();
+    }
+
 public:
 
     static NodePtr Make(std::string name) {
@@ -90,6 +95,18 @@ public:
 
     bool getLocalApplicability() const {
         return local_applicability;
+    }
+
+    void addComponent(component::ComponentPtr new_component) {
+        components.addComponent(new_component);
+    }
+
+    void removeComponent(int component_id) {
+        components.removeComponent(component_id);
+    }
+
+    void removeComponentByIndex(int index) {
+        components.removeComponentByIndex(index);
     }
 
     int getChildCount() const {

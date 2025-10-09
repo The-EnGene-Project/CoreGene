@@ -6,10 +6,13 @@
 #include <unordered_map>
 #include <string>
 #include <vector>
+#include <iostream> // Para std::cerr
 
 #include "gl_base/shader.h"
 #include "gl_base/transform.h"
 #include "node.h"
+// Supondo que component.h é incluído por node.h ou está disponível
+#include "component.h" 
 
 namespace scene {
 
@@ -22,48 +25,36 @@ class SceneGraph {
 private:
     node::NodePtr root;
     shader::ShaderPtr base_shader;
-    std::unordered_map<std::string, node::NodePtr> name_map; // Mapa de nomes para nós
-    std::unordered_map<int, node::NodePtr> node_map; // Mapa de IDs para nós
-    node::NodePtr currentNode; // Nó atualmente selecionado
+    std::unordered_map<std::string, node::NodePtr> name_map; // Mapeia nomes para nós
+    std::unordered_map<int, node::NodePtr> node_map;       // Mapeia IDs para nós
     transform::TransformPtr view_transform;
 
-    
     SceneGraph(shader::ShaderPtr base) {
         root = node::Node::Make("root");
         base_shader = base;
-        currentNode = root;
         name_map["root"] = root;
         node_map[root->getId()] = root;
         view_transform = transform::Transform::Make();
-        view_transform->orthographic(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f); // Inicializa com ortográfica padrão
+        view_transform->orthographic(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f); // Ortográfica padrão
     }
 
     friend SceneGraphPtr graph();
-
     friend class SceneGraphVisitor;
 
     void registerNode(node::NodePtr node) {
         name_map[node->getName()] = node;
         node_map[node->getId()] = node;
-        currentNode = node;
     }
 
-protected:
-
-    // BACALHAU
+public:
     node::NodePtr getRoot() const {
         return root;
-    }
-
-    node::NodePtr getCurrentNode() const {
-        return currentNode;
     }
 
     node::NodePtr getNodeByName(const std::string& name) {
         auto it = name_map.find(name);
         if (it != name_map.end()) {
-            currentNode = it->second;
-            return currentNode;
+            return it->second;
         }
         return nullptr;
     }
@@ -71,13 +62,10 @@ protected:
     node::NodePtr getNodeById(int id) {
         auto it = node_map.find(id);
         if (it != node_map.end()) {
-            currentNode = it->second;
-            return currentNode;
+            return it->second;
         }
         return nullptr;
     }
-
-public:
 
     void addNode(node::NodePtr node, node::NodePtr parent = nullptr) {
         if (!parent) {
@@ -87,10 +75,10 @@ public:
         registerNode(node);
     }
 
-    void addNode(const std::string& name, node::NodePtr parent = nullptr) {
+    node::NodePtr addNode(const std::string& name, node::NodePtr parent = nullptr) {
         if (name_map.find(name) != name_map.end()) {
             std::cerr << "Node with name " << name << " already exists!" << std::endl;
-            return;
+            return nullptr;
         }
         if (!parent) {
             parent = root;
@@ -98,203 +86,63 @@ public:
         node::NodePtr new_node = node::Node::Make(name);
         parent->addChild(new_node);
         registerNode(new_node);
+        return new_node;
     }
 
-    void addNodeToCurrent(const std::string& name) {
-        addNode(name, currentNode);
-    }
-
-    void lookAtNode(const std::string& name) {
-        node::NodePtr node = getNodeByName(name);
-        if (node) {
-            currentNode = node;
-        } else {
-            std::cerr << "Node with name " << name << " not found!" << std::endl;
+    bool renameNode(node::NodePtr node_to_rename, const std::string& new_name) {
+        if (!node_to_rename) {
+            std::cerr << "Cannot rename a null node!" << std::endl;
+            return false;
         }
-    }
-
-    void addComponentToCurrentNode(component::ComponentPtr new_component) {
-        currentNode->addComponent(new_component);
-    }
-
-    void moveCurrentNodeTo(node::NodePtr new_parent) {
-        if (new_parent) {
-            node::NodePtr old_parent = currentNode->getParent();
-            if (old_parent) {
-                old_parent->removeChild(currentNode);
-            }
-            new_parent->addChild(currentNode);
-        } else {
-            std::cerr << "New parent is null in moveCurrentNodeTo" << std::endl;
-        }
-    }
-
-    void moveCurrentNodeTo(const std::string& new_parent_name) {
-        node::NodePtr new_parent = getNodeByName(new_parent_name);
-        if (new_parent) {
-            node::NodePtr old_parent = currentNode->getParent();
-            if (old_parent) {
-                old_parent->removeChild(currentNode);
-            }
-            new_parent->addChild(currentNode);
-        } else {
-            std::cerr << "New parent with name " << new_parent_name << " not found in moveCurrentNodeTo" << std::endl;
-        }
-    }
-
-    void moveToPositionUnderParent(const int position) {
-        node::NodePtr parent = currentNode->getParent();
-        if (parent) {
-            if (position < 0 || position >= parent->getChildCount()) {
-                std::cerr << "Position out of bounds in moveToPositionUnderParent" << std::endl;
-                return;
-            }
-            parent->moveChild(parent->getChildIndex(currentNode), position);
-        } else {
-            std::cerr << "Current node has no parent in moveToPositionUnderParent" << std::endl;
-        }
-    }
-
-    void moveChild(const int from_idx, const int to_idx) {
-        currentNode->moveChild(from_idx, to_idx);
-    }
-
-    void swapChildren(const int idx1, const int idx2) {
-        currentNode->swapChildren(idx1, idx2);
-    }
-
-    void renameCurrentNode(const std::string& new_name) {
         if (name_map.find(new_name) != name_map.end()) {
             std::cerr << "Node with name " << new_name << " already exists!" << std::endl;
-            return;
+            return false;
         }
-        name_map.erase(currentNode->getName());
-        currentNode->setName(new_name);
-        name_map[new_name] = currentNode;
+        name_map.erase(node_to_rename->getName());
+        node_to_rename->setName(new_name);
+        name_map[new_name] = node_to_rename;
+        return true;
     }
 
-    void removeCurrentNode() {
-        node::NodePtr parent = currentNode->getParent();
+    void removeNode(node::NodePtr node_to_remove) {
+        if (!node_to_remove || node_to_remove == root) {
+            std::cerr << "Cannot remove null or root node!" << std::endl;
+            return;
+        }
+        node::NodePtr parent = node_to_remove->getParent();
         if (parent) {
-            parent->removeChild(currentNode);
+            parent->removeChild(node_to_remove);
         }
-        name_map.erase(currentNode->getName());
-        node_map.erase(currentNode->getId());
+        name_map.erase(node_to_remove->getName());
+        node_map.erase(node_to_remove->getId());
     }
 
-    // TODO: BACALHAU fazer esta função de fato copiar cada membro do node
-    // ainda falta copiar a coleção de componentes
-    void duplicateNode(const std::string& name, const std::string& new_name) {
-        if (name_map.find(name) != name_map.end()) {
-            std::cerr << "Node with name " << name << " already exists!" << std::endl;
-            return;
-        }
-        node::NodePtr node = getNodeByName(name);
-        if (node) {
-            node::NodePtr new_node = node::Node::Make(
-                new_name, 
-                node->getParent()
-            );
-            node->getParent()->addChild(new_node);
-            name_map[new_name] = new_node;
-            node_map[new_node->getId()] = new_node;
-            currentNode = new_node;
-            registerNode(new_node);
-        } else {
-            std::cerr << "Node with name " << name << " not found!" << std::endl;
-        }
-    }
-
-    void addSibling(const std::string& name) {
-        if (name_map.find(name) != name_map.end()) {
-            std::cerr << "Node with name " << name << " already exists!" << std::endl;
-            return;
-        }
-        node::NodePtr parent = currentNode->getParent();
-        if (parent) {
-            addNode(name, parent);
-        } else {
-            std::cerr << "Current node has no parent!" << std::endl;
-        }
-    }
-
-    void addSiblingAfter(node::NodePtr new_sibling, const std::string& node_to_add_after = "") {
-        if (!node_to_add_after.empty()) {
-            node::NodePtr after = getNodeByName(node_to_add_after);
-            if (after) {
-                node::NodePtr parent = after->getParent();
-                if (parent) {
-                    parent->addChildAfter(new_sibling, after);
-                    registerNode(new_sibling);
-                } else {
-                    std::cerr << "Node to add after has no parent!" << std::endl;
-                }
-            } else {
-                std::cerr << "Node to add after not found!" << std::endl;
-            }
-            return;
-        }
-        
-        node::NodePtr parent = currentNode->getParent();
-        if (parent) {
-            node::NodePtr after = currentNode;
-            parent->addChildAfter(new_sibling, after);
-            registerNode(new_sibling);
-        } else {
-            std::cerr << "Current node has no parent!" << std::endl;
-        }
-    }
-
-    void addSiblingAfter(const std::string& name, const std::string& node_to_add_after = "") {
-        if (name_map.find(name) != name_map.end()) {
-            std::cerr << "Node with name " << name << " already exists!" << std::endl;
-            return;
-        }
-        addSiblingAfter(node::Node::Make(name), node_to_add_after);
-    }
-
-    void newNodeAbove(const std::string& new_name) {
+    // TODO: Esta função precisa de fato copiar os membros do nó, especialmente a coleção de componentes.
+    node::NodePtr duplicateNode(const std::string& source_name, const std::string& new_name) {
         if (name_map.find(new_name) != name_map.end()) {
             std::cerr << "Node with name " << new_name << " already exists!" << std::endl;
-            return;
+            return nullptr;
         }
-        node::NodePtr old_current = currentNode, old_parent = currentNode->getParent();
-        addSiblingAfter(node::Node::Make(new_name));
-        currentNode->addChild(old_current);
-        old_parent->removeChild(old_current);
-        old_current->setParent(currentNode);
-
-        // alternative logic:
-        // goes to parent finds the current node stores the current node 
-        // then adds a new node where the current one was relative to the parent
-        // and adds the previous current node as a child to the created node
-        // node::NodePtr parent = currentNode->getParent();
-        // if (parent) {
+        node::NodePtr node_to_copy = getNodeByName(source_name);
+        if (node_to_copy) {
+            node::NodePtr new_node = node::Node::Make(new_name);
+            // Copie componentes e outras propriedades aqui...
             
-        //     int idx = -1;
-        //     node::NodePtr new_node = node::Node::Make(name, nullptr, nullptr, transform::Transform::Make());
-        //     idx = parent->getChildIndex(currentNode);
-        //     if (idx != -1) {
-        //         parent->removeChild(currentNode);
-        //         parent->addChild(new_node, idx);
-        //         new_node->addChild(currentNode);
-        //         currentNode = new_node;
-        //     } else {
-        //         std::cerr << "Current node not found in parent's children!" << std::endl;
-        //     }
-        // } else {
-        //     std::cerr << "Current node has no parent!" << std::endl;
-        // }
-    }
-
-
-    void newNodeAbove() {
-        std::string new_name = currentNode->getName() + "_parent";
-        while (name_map.find(new_name) != name_map.end()) {
-            new_name += "_new";
+            node::NodePtr parent = node_to_copy->getParent();
+            if (parent) {
+                parent->addChild(new_node);
+                registerNode(new_node);
+                return new_node;
+            } else {
+                 std::cerr << "Source node has no parent, cannot duplicate!" << std::endl;
+                 return nullptr;
+            }
+        } else {
+            std::cerr << "Node with name " << source_name << " not found!" << std::endl;
+            return nullptr;
         }
-        newNodeAbove(new_name);
     }
+
 
     void setView(float left, float right, float bottom, float top, float near, float far) {
         view_transform->orthographic(left, right, bottom, top, near, far);
@@ -308,17 +156,13 @@ public:
 
     void clearGraph() {
         root = node::Node::Make("root");
-        currentNode = root;
         name_map.clear();
         node_map.clear();
         name_map["root"] = root;
         node_map[root->getId()] = root;
     }
 
-    
-
     void draw(bool print = false) {
-        // Aplica a transformação de visão
         transform::stack()->push(view_transform->getMatrix());
         shader::stack()->push(base_shader);
         if (root) {
@@ -330,7 +174,6 @@ public:
     }
 
     void drawSubtree(node::NodePtr node, bool print = false) {
-        // Aplica a transformação de visão
         transform::stack()->push(view_transform->getMatrix());
         shader::stack()->push(base_shader);
         if (node) {

@@ -17,7 +17,7 @@ private:
 protected:
 
     ShaderComponent(shader::ShaderPtr s) :
-        Component(),
+        Component(ComponentPriority::SHADER),
         m_shader(s)
         {}
 

@@ -5,6 +5,7 @@
 #include <memory>
 #include "component.h"
 #include "../gl_base/geometry.h"
+#include "../gl_base/shader.h"
 
 namespace component {
 
@@ -28,6 +29,7 @@ public:
     }
     
     virtual void apply() override {
+        shader::stack()->top();
         m_geometry->Draw();
     }
 

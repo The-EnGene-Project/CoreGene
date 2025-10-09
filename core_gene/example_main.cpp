@@ -7,7 +7,6 @@ int main() {
     // Define the user's one-time initialization logic
     auto on_init = []() {
         // This is the code that runs once at the start.
-        // It's the equivalent of your old `initialize()` function.
         scene::graph()->initializeBaseShader("../shaders/vertex.glsl", "../shaders/fragment.glsl");
         // ... set up your initial scene, load models, etc.
     };

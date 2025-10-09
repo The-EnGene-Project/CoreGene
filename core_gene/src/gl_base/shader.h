@@ -5,11 +5,13 @@
 #include <memory>
 #include "gl_includes.h"
 #include "error.h"
+#include "uniform.h" // Incluindo o novo arquivo de uniformes
 #include <fstream>
 #include <iostream>
 #include <sstream> 
 #include <cstdlib>
 #include <vector>
+#include <unordered_map> // Necessário para o mapa de uniformes
 
 namespace shader {
 
@@ -73,7 +75,10 @@ static GLuint MakeShader(GLenum shadertype, const std::string& filename) {
 }
 
 class Shader {
+private:
     unsigned int m_pid;
+    std::unordered_map<std::string, std::unique_ptr<UniformInterface>> m_uniforms;
+
 protected:
     Shader() {
         m_pid = glCreateProgram();
@@ -82,6 +87,7 @@ protected:
             exit(1);
         }
     }
+
 public:
     static ShaderPtr Make() {
         return ShaderPtr(new Shader());
@@ -119,8 +125,33 @@ public:
             exit(1);
         }
     }
+
+    // Método de template para configurar qualquer tipo de uniforme
+    template<typename T>
+    void configureUniform(const std::string& name, std::function<T()> value_provider) {
+        auto uniform_obj = std::make_unique<Uniform<T>>(std::move(value_provider));
+        uniform_obj->location = glGetUniformLocation(m_pid, name.c_str());
+
+        if (uniform_obj->location == -1) {
+            // Isso não é um erro fatal, o compilador GLSL pode otimizar e remover uniformes não utilizados.
+            // std::cerr << "Warning: Uniform '" << name << "' not found in shader program." << std::endl;
+        }
+        
+        m_uniforms[name] = std::move(uniform_obj);
+    }
+
+    // Aplica todos os uniformes configurados
+    void applyUniforms() const {
+        for (const auto& pair : m_uniforms) {
+            if (pair.second->location != -1) {
+                pair.second->apply();
+            }
+        }
+    }
+
     void UseProgram() const {
         glUseProgram(m_pid);
+        applyUniforms();
     }
 };
 

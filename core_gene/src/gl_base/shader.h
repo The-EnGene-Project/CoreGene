@@ -3,21 +3,22 @@
 #pragma once
 
 #include <memory>
-#include "gl_includes.h"
-#include "error.h"
-#include "uniform.h" // Incluindo o novo arquivo de uniformes
 #include <fstream>
 #include <iostream>
 #include <sstream> 
 #include <cstdlib>
 #include <vector>
-#include <unordered_map> // Necessário para o mapa de uniformes
+#include <unordered_map>
+#include <string>
+#include <functional>
+#include "gl_includes.h"
+#include "error.h"
+#include "uniform.h"
 
 namespace shader {
 
 class Shader;
 using ShaderPtr = std::shared_ptr<Shader>;
-
 
 class ShaderStack;
 using ShaderStackPtr = std::shared_ptr<ShaderStack>;
@@ -77,7 +78,8 @@ static GLuint MakeShader(GLenum shadertype, const std::string& filename) {
 class Shader {
 private:
     unsigned int m_pid;
-    std::unordered_map<std::string, std::unique_ptr<UniformInterface>> m_uniforms;
+    // Mapa para armazenar os uniformes configurados
+    std::unordered_map<std::string, UniformInterfacePtr> m_uniforms;
 
 protected:
     Shader() {
@@ -126,30 +128,29 @@ public:
         }
     }
 
-    // Método de template para configurar qualquer tipo de uniforme
+    // Configura um uniforme dinâmico
     template<typename T>
     void configureUniform(const std::string& name, std::function<T()> value_provider) {
-        auto uniform_obj = std::make_unique<Uniform<T>>(std::move(value_provider));
-        uniform_obj->location = glGetUniformLocation(m_pid, name.c_str());
-
-        if (uniform_obj->location == -1) {
-            // Isso não é um erro fatal, o compilador GLSL pode otimizar e remover uniformes não utilizados.
-            // std::cerr << "Warning: Uniform '" << name << "' not found in shader program." << std::endl;
-        }
+        // 1. Cria o objeto Uniform.
+        auto uniform_obj = Uniform<T>::Make(name, std::move(value_provider));
         
+        // 2. Pede ao objeto para encontrar sua própria localização neste shader.
+        uniform_obj->findLocation(m_pid);
+        
+        // 3. Armazena o uniforme configurado no mapa.
         m_uniforms[name] = std::move(uniform_obj);
     }
 
-    // Aplica todos os uniformes configurados
+    // Aplica todos os uniformes configurados para este shader.
     void applyUniforms() const {
         for (const auto& pair : m_uniforms) {
-            if (pair.second->location != -1) {
-                pair.second->apply();
-            }
+            pair.second->apply();
         }
     }
 
+    // Ativa o shader e aplica seus uniformes.
     void UseProgram() const {
+        // É crucial usar o programa ANTES de enviar os valores dos uniformes.
         glUseProgram(m_pid);
         applyUniforms();
     }
@@ -164,18 +165,16 @@ private:
     ShaderStack() {
         stack.push_back(Shader::Make());
     }
-
-    // A amizade agora é concedida à função livre 'shaderStack()' do namespace.
+    
     friend ShaderStackPtr stack();
 public:
     ShaderStack(const ShaderStack&) = delete;
     ShaderStack& operator=(const ShaderStack&) = delete;
     ~ShaderStack() = default;
+
     void push(ShaderPtr shader) {
         // only push if it's different from the current top
         if (shader != stack.back()) {
-            shader->UseProgram();
-            last_used_shader = shader;
             stack.push_back(shader);
         }
     }
@@ -188,6 +187,8 @@ public:
     }
     ShaderPtr top() {
         ShaderPtr current_shader = stack.back();
+        // A lógica de otimização de usar o shader só quando muda é boa.
+        // O UseProgram agora também aplica os uniformes.
         if (current_shader != last_used_shader) {
             current_shader->UseProgram();
             last_used_shader = current_shader;
@@ -232,6 +233,6 @@ inline ShaderStackPtr stack() {
 //     return id;
 // }
 
-}
+} // namespace shader
 
 #endif

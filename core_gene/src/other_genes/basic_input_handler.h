@@ -21,8 +21,6 @@ public:
     ~BasicInputHandler() override = default;
 
 protected:
-    // --- We override the virtual handler methods from the base class ---
-
     void handleKey(GLFWwindow* window, int key, int scancode, int action, int mods) override {
         if (key == GLFW_KEY_Q && action == GLFW_PRESS) {
             glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -39,10 +37,34 @@ protected:
         }
     }
 
+    // UPDATED: Implemented the NDC calculation from the old version.
     void handleMouseButton(GLFWwindow* win, int button, int action, int mods) override {
         if (action == GLFW_PRESS) {
-            std::cout << "Mouse button pressed via BasicInputHandler!" << std::endl;
+            double xpos, ypos;
+            glfwGetCursorPos(win, &xpos, &ypos);
+
+            int fb_w, fb_h;
+            glfwGetFramebufferSize(win, &fb_w, &fb_h);
+            
+            // Convert screen coordinates (pixels) to Normalized Device Coordinates (NDC) [-1, 1]
+            float x_ndc = ((float)xpos / (float)fb_w) * 2.0f - 1.0f;
+            float y_ndc = (1.0f - ((float)ypos / (float)fb_h)) * 2.0f - 1.0f;
+
+            std::cout << "Mouse click at NDC: (" << x_ndc << ", " << y_ndc << ")" << std::endl;
         }
+    }
+
+    // NEW: Added the missing cursor position handler.
+    void handleCursorPos(GLFWwindow* win, double xpos, double ypos) override {
+        // Convert screen pos (upside down) to framebuffer pos (e.g., for retina displays)
+        int wn_w, wn_h, fb_w, fb_h;
+        glfwGetWindowSize(win, &wn_w, &wn_h);
+        glfwGetFramebufferSize(win, &fb_w, &fb_h);
+        
+        double x = xpos * fb_w / wn_w;
+        double y = (wn_h - ypos) * fb_h / wn_h; // Invert Y-axis
+        
+        std::cout << "Cursor at Framebuffer Coords: (" << x << ", " << y << ")" << std::endl;
     }
 
 private:
@@ -53,4 +75,3 @@ private:
 } // namespace input
 
 #endif // BASIC_INPUT_HANDLER_H
-

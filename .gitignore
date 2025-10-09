@@ -4,8 +4,4 @@
 .vscode
 /**/*.zip
 /**/libs/* 
-
-scene_graph/*
-test/*
-
 !.gitkeep

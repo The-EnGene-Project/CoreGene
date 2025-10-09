@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <string>
 #include <functional>
+#include <any>
 #include "gl_includes.h"
 #include "error.h"
 #include "uniform.h"
@@ -22,6 +23,8 @@ using ShaderPtr = std::shared_ptr<Shader>;
 
 class ShaderStack;
 using ShaderStackPtr = std::shared_ptr<ShaderStack>;
+
+using UniformProviderMap = std::unordered_map<std::string, std::any>;
 
 static GLuint MakeShader(GLenum shadertype, const std::string& filename) {
     
@@ -93,6 +96,48 @@ protected:
 public:
     static ShaderPtr Make() {
         return ShaderPtr(new Shader());
+    }
+
+    // Cria, anexa, linca e configura os uniformes de uma só vez.
+    static ShaderPtr Make(
+        const std::string& vertex_shader_file, 
+        const std::string& fragment_shader_file, 
+        const UniformProviderMap& uniforms = {}) 
+    {
+        ShaderPtr shader = ShaderPtr(new Shader());
+        shader->AttachVertexShader(vertex_shader_file);
+        shader->AttachFragmentShader(fragment_shader_file);
+        shader->Link();
+
+        for (const auto& [name, any_provider] : uniforms) {
+            // Verifica e configura cada tipo de uniforme suportado
+            if (const auto* provider = std::any_cast<std::function<float()>>(&any_provider)) {
+                shader->configureUniform<float>(name, *provider);
+            } 
+            else if (const auto* provider = std::any_cast<std::function<int()>>(&any_provider)) {
+                shader->configureUniform<int>(name, *provider);
+            }
+            else if (const auto* provider = std::any_cast<std::function<glm::vec2()>>(&any_provider)) {
+                shader->configureUniform<glm::vec2>(name, *provider);
+            }
+            else if (const auto* provider = std::any_cast<std::function<glm::vec3()>>(&any_provider)) {
+                shader->configureUniform<glm::vec3>(name, *provider);
+            }
+            else if (const auto* provider = std::any_cast<std::function<glm::vec4()>>(&any_provider)) {
+                shader->configureUniform<glm::vec4>(name, *provider);
+            }
+            else if (const auto* provider = std::any_cast<std::function<glm::mat3()>>(&any_provider)) {
+                shader->configureUniform<glm::mat3>(name, *provider);
+            }
+            else if (const auto* provider = std::any_cast<std::function<glm::mat4()>>(&any_provider)) {
+                shader->configureUniform<glm::mat4>(name, *provider);
+            }
+            else {
+                std::cerr << "Warning: Uniform '" << name << "' has an unsupported type in Make function." << std::endl;
+            }
+        }
+
+        return shader;
     }
     
     virtual ~Shader(){

@@ -37,6 +37,11 @@ public:
         // nothing to do here
     }
 
+    
+    virtual const char* getTypeName() const override {
+        return "GeometryComponent";
+    }
+
     geometry::GeometryPtr getGeometry() {
         return m_geometry;
     }

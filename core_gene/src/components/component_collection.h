@@ -39,15 +39,24 @@ public:
                         components.end());
     }
 
-    virtual void apply() {
+    virtual void apply(bool print=false) {
+
+        printf("ComponentCollection::apply()\n");
+
         // If the component list has changed, sort it before execution.
         if (!are_components_sorted) {
             sortComponents();
         }
 
         for (const auto& component : components) {
+            if (print) {
+                std::cout << "Component ID: " << component->getId() << std::endl
+                << "Component Type: " << component->getTypeName() << std::endl;
+            }
             component->apply();
         }
+
+        if (print) std::cout << std::endl;
     }
 
     virtual void unapply() {

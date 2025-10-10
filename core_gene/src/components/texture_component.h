@@ -74,6 +74,10 @@ public:
             texture::stack()->pop();
         }
     }
+
+    virtual const char* getTypeName() const override {
+        return "TextureComponent";
+    }
 };
 
 } // namespace component

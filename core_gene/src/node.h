@@ -218,7 +218,7 @@ public:
 
         Error::Check("scene::Node::draw start");
 
-        if (!local_applicability) components.apply();
+        if (!local_applicability) components.apply(print);
 
         Error::Check("scene::Node::draw after apply");
 

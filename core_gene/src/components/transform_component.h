@@ -55,6 +55,10 @@ public:
         transform::stack()->pop();
     }
 
+    virtual const char* getTypeName() const override {
+        return "TransformComponent";
+    }
+
     transform::TransformPtr getTransform() {
         return m_transform;
     }

@@ -49,6 +49,8 @@ public:
     int getId() {
         return id;
     }
+
+    virtual const char* getTypeName() const = 0;
 };
 
 

@@ -35,6 +35,10 @@ public:
         shader::stack()->pop();
     }
 
+    virtual const char* getTypeName() const override  {
+        return "ShaderComponent";
+    }
+
     shader::ShaderPtr getShader() {
         return m_shader;
     }

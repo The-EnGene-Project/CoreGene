@@ -39,8 +39,12 @@ protected:
 
 public:
 
-    TransformComponentPtr Make(transform::TransformPtr t) {
-        return std::make_shared<TransformComponent>(t);
+    static TransformComponentPtr Make(transform::TransformPtr t) {
+        return TransformComponentPtr(new TransformComponent(t));
+    }
+
+    static TransformComponentPtr Make(transform::TransformPtr t, unsigned int priority) {
+        return TransformComponentPtr(new TransformComponent(t, priority));
     }
     
     virtual void apply() override {

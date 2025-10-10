@@ -86,6 +86,13 @@ private:
 
 protected:
     Shader() {
+        m_pid = -1;
+    }
+
+    void initialize() {
+        if (m_pid != -1) {
+            return;
+        }
         m_pid = glCreateProgram();
         if (m_pid == 0) {
             std::cerr << "Could not create program object";
@@ -105,6 +112,7 @@ public:
         const UniformProviderMap& uniforms = {}) 
     {
         ShaderPtr shader = ShaderPtr(new Shader());
+        shader->initialize();
         shader->AttachVertexShader(vertex_shader_file);
         shader->AttachFragmentShader(fragment_shader_file);
         shader->Link();
@@ -149,11 +157,13 @@ public:
     }
 
     void AttachVertexShader(const std::string& filename) {
+        initialize();
         GLuint sid = MakeShader(GL_VERTEX_SHADER, filename);
         glAttachShader(m_pid, sid);
     }
 
     void AttachFragmentShader(const std::string& filename) {
+        initialize();
         GLuint sid = MakeShader(GL_FRAGMENT_SHADER, filename);
         glAttachShader(m_pid, sid);
     }

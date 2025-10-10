@@ -61,9 +61,9 @@ protected:
         applicability = new_applicability;
     }
 
-    ComponentCollection getCollectionCopy() {
-        return components.copy();
-    }
+    // ComponentCollection getCollectionCopy() {
+    //     return components.copy();
+    // }
 
 public:
 

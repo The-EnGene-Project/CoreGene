@@ -12,7 +12,7 @@
 #include "gl_base/transform.h"
 #include "node.h"
 // Supondo que component.h é incluído por node.h ou está disponível
-#include "component.h" 
+#include "components/component.h" 
 
 namespace scene {
 

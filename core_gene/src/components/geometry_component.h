@@ -24,8 +24,8 @@ protected:
 
 public:
 
-    GeometryComponentPtr Make(geometry::GeometryPtr g) {
-        return std::make_shared<GeometryComponent>(g);
+    static GeometryComponentPtr Make(geometry::GeometryPtr g) {
+        return GeometryComponentPtr(new GeometryComponent(g));
     }
     
     virtual void apply() override {

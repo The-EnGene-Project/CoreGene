@@ -24,7 +24,7 @@ protected:
 public:
 
     ShaderComponentPtr Make(shader::ShaderPtr s) {
-        return std::make_shared<ShaderComponent>(s);
+        return ShaderComponentPtr(new ShaderComponent(s));
     }
     
     virtual void apply() override {

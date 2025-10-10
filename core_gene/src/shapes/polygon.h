@@ -5,7 +5,7 @@ using PolygonPtr = std::shared_ptr<Polygon>;
 #ifndef POLYGON_H
 #define POLYGON_H
 #pragma once
-#include "gl_includes.h"
+#include "../gl_base/gl_includes.h"
 #include "../gl_base/geometry.h"
 
 class Polygon : public geometry::Geometry {

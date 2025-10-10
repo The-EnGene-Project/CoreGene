@@ -43,11 +43,17 @@ public:
     }
 
     void addNode(node::NodePtr new_node, node::NodePtr parent = nullptr) {
+        if (!parent) {
+            parent = currentNode;
+        }
         sg->addNode(new_node, parent);
         currentNode = new_node;
     }
 
     void addNode(const std::string& name, node::NodePtr parent = nullptr) {
+        if (!parent) {
+            parent = currentNode;
+        }
         node::NodePtr new_node = sg->addNode(name, parent);
         if (new_node) {
             currentNode = new_node;

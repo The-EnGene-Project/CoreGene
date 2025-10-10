@@ -37,7 +37,8 @@ public:
         input::InputHandler* handler,
         std::function<void()> on_initialize,
         std::function<void()> on_update,
-        int max_framerate = 60
+        int max_framerate = 60,
+        float clear_color[4] = nullptr
     ) : m_width(width),
         m_height(height),
         m_title(title),
@@ -51,8 +52,20 @@ public:
         m_update_interval = 1.0 / static_cast<double>(max_framerate);
         initialize_window();
 
+        if (clear_color) {
+            m_clear_color[0] = clear_color[0];
+            m_clear_color[1] = clear_color[1];
+            m_clear_color[2] = clear_color[2];
+            m_clear_color[3] = clear_color[3];
+        } else {
+            m_clear_color[0] = 0.1f;
+            m_clear_color[1] = 0.1f;
+            m_clear_color[2] = 0.1f;
+            m_clear_color[3] = 1.0f;
+        }
+
         // Set up default OpenGL state
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClearColor(m_clear_color[0], m_clear_color[1], m_clear_color[2], m_clear_color[3]);
         glEnable(GL_DEPTH_TEST); // Enable depth testing for 3D
     }
 
@@ -110,6 +123,7 @@ private:
     GLFWwindow* m_window = nullptr;
     std::unique_ptr<input::InputHandler> m_input_handler;
     double m_update_interval;
+    float m_clear_color[4];
 
     // User-provided functions
     std::function<void()> m_user_initialize_func;

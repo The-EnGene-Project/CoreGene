@@ -58,7 +58,7 @@ private:
     Uniform(const std::string& uniform_name, std::function<T()> provider)
         : value_provider(std::move(provider))
     {
-        this->name = uniform_name;
+        name = uniform_name;
     }
 
 public:

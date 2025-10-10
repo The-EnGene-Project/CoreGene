@@ -50,6 +50,10 @@ public:
     node::NodePtr getRoot() const {
         return root;
     }
+    // BACALHAU resolver jeito melhor de fazer isso.
+    shader::ShaderPtr getBaseShader() const {
+        return base_shader;
+    }
 
     node::NodePtr getNodeByName(const std::string& name) {
         auto it = name_map.find(name);

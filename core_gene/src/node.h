@@ -218,7 +218,7 @@ public:
 
         Error::Check("scene::Node::draw start");
 
-        if (!local_applicability) components.apply(print);
+        if (local_applicability) components.apply(print);
 
         Error::Check("scene::Node::draw after apply");
 
@@ -228,7 +228,7 @@ public:
         }
         Error::Check("scene::Node::draw after drawing children");
 
-        if (!local_applicability) components.unapply();
+        if (local_applicability) components.unapply();
 
         Error::Check("scene::Node::draw end");
         

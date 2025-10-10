@@ -248,6 +248,7 @@ public:
             current_shader->UseProgram();
             last_used_shader = current_shader;
         }
+        current_shader->applyUniforms();
         return current_shader;
     }
     unsigned int topId() {

@@ -78,11 +78,14 @@ static GLuint MakeShader(GLenum shadertype, const std::string& filename) {
     return id;
 }
 
+static const char* GLenumToString(GLenum type);
+
 class Shader {
 private:
     unsigned int m_pid;
     // Mapa para armazenar os uniformes configurados
     std::unordered_map<std::string, UniformInterfacePtr> m_uniforms;
+    mutable bool m_uniforms_validated = false;
 
 protected:
     Shader() {
@@ -98,6 +101,39 @@ protected:
             std::cerr << "Could not create program object";
             exit(1);
         }
+    }
+
+    void validateUniforms() const {
+        if (m_uniforms_validated) return;
+        GLint active_uniforms = 0;
+        glGetProgramiv(m_pid, GL_ACTIVE_UNIFORMS, &active_uniforms);
+        
+        // Buffer for uniform names
+        const GLsizei bufSize = 256; 
+        GLchar name[bufSize]; 
+        GLsizei length; 
+        GLint size; 
+        GLenum type;
+
+        for (GLint i = 0; i < active_uniforms; ++i) {
+            glGetActiveUniform(m_pid, (GLuint)i, bufSize, &length, &size, &type, name);
+
+            std::string uniform_name(name, length);
+
+            // Ignore built-in OpenGL uniforms which start with "gl_"
+            if (uniform_name.rfind("gl_", 0) == 0) {
+                continue;
+            }
+
+            // Check if the active uniform exists in our configured map
+            if (m_uniforms.find(uniform_name) == m_uniforms.end()) {
+                std::cerr << "Warning: Active uniform '" << uniform_name  
+                          << "' (type: " << GLenumToString(type) << ")"
+                          << "' is declared in the shader but not configured in the C++ code." 
+                          << std::endl;
+            }
+        }
+        m_uniforms_validated = true;
     }
 
 public:
@@ -170,6 +206,8 @@ public:
 
     void Link() {
         glLinkProgram(m_pid);
+        Error::Check("link program"); // It's good practice to check for errors after each call.
+
         GLint status;
         glGetProgramiv(m_pid, GL_LINK_STATUS, &status);
         if (status == GL_FALSE) {
@@ -207,9 +245,33 @@ public:
     void UseProgram() const {
         // É crucial usar o programa ANTES de enviar os valores dos uniformes.
         glUseProgram(m_pid);
+        validateUniforms();
         applyUniforms();
     }
 };
+
+static const char* GLenumToString(GLenum type) {
+    switch (type) {
+        case GL_FLOAT:      return "float";
+        case GL_FLOAT_VEC2: return "vec2";
+        case GL_FLOAT_VEC3: return "vec3";
+        case GL_FLOAT_VEC4: return "vec4";
+        case GL_INT:        return "int";
+        case GL_INT_VEC2:   return "ivec2";
+        case GL_INT_VEC3:   return "ivec3";
+        case GL_INT_VEC4:   return "ivec4";
+        case GL_BOOL:       return "bool";
+        case GL_BOOL_VEC2:  return "bvec2";
+        case GL_BOOL_VEC3:  return "bvec3";
+        case GL_BOOL_VEC4:  return "bvec4";
+        case GL_FLOAT_MAT2: return "mat2";
+        case GL_FLOAT_MAT3: return "mat3";
+        case GL_FLOAT_MAT4: return "mat4";
+        case GL_SAMPLER_2D: return "sampler2D";
+        case GL_SAMPLER_CUBE: return "samplerCube";
+        default:            return "Unknown Type";
+    }
+}
 
 class ShaderStack { // singleton
     // BACALHAU falta adaptar para ter o batching dos comandos de draw pelo shader

@@ -22,8 +22,8 @@ using UniformInterfacePtr = std::unique_ptr<UniformInterface>;
 // Interface abstrata para um Uniform.
 class UniformInterface {
 protected:
-    GLint location = -1;
-    std::string name;
+    GLint m_location = -2;
+    std::string m_name;
 
 public:
     virtual ~UniformInterface() = default;
@@ -33,17 +33,22 @@ public:
     // Será chamado pelo Shader no momento da configuração.
     void findLocation(GLuint program_id) {
         // Só busca a localização se ainda não a tivermos encontrado.
-        if (location == -1) {
-            location = glGetUniformLocation(program_id, name.c_str());
+        if (m_location == -2) {
+            m_location = glGetUniformLocation(program_id, m_name.c_str());
+            if (m_location == -1) {
+                std::cerr << "Warning: Uniform '" << m_name 
+                        << "' was configured in C++ but is not an active uniform in the shader program."
+                        << " It might be unused or misspelled." << std::endl;
+            }
         }
     }
 
     bool isValid() const {
-        return location != -1;
+        return m_location >= 0;
     }
     
     const std::string& getName() const { 
-        return name; 
+        return m_name; 
     }
 };
 
@@ -58,7 +63,7 @@ private:
     Uniform(const std::string& uniform_name, std::function<T()> provider)
         : value_provider(std::move(provider))
     {
-        name = uniform_name;
+        m_name = uniform_name;
     }
 
 public:
@@ -77,49 +82,49 @@ public:
 template<>
 inline void Uniform<float>::apply() const {
     if (isValid()) {
-        glUniform1f(location, value_provider());
+        glUniform1f(m_location, value_provider());
     }
 }
 
 template<>
 inline void Uniform<int>::apply() const {
     if (isValid()) {
-        glUniform1i(location, value_provider());
+        glUniform1i(m_location, value_provider());
     }
 }
 
 template<>
 inline void Uniform<glm::vec2>::apply() const {
     if (isValid()) {
-        glUniform2fv(location, 1, glm::value_ptr(value_provider()));
+        glUniform2fv(m_location, 1, glm::value_ptr(value_provider()));
     }
 }
 
 template<>
 inline void Uniform<glm::vec3>::apply() const {
     if (isValid()) {
-        glUniform3fv(location, 1, glm::value_ptr(value_provider()));
+        glUniform3fv(m_location, 1, glm::value_ptr(value_provider()));
     }
 }
 
 template<>
 inline void Uniform<glm::vec4>::apply() const {
     if (isValid()) {
-        glUniform4fv(location, 1, glm::value_ptr(value_provider()));
+        glUniform4fv(m_location, 1, glm::value_ptr(value_provider()));
     }
 }
 
 template<>
 inline void Uniform<glm::mat3>::apply() const {
     if (isValid()) {
-        glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(value_provider()));
+        glUniformMatrix3fv(m_location, 1, GL_FALSE, glm::value_ptr(value_provider()));
     }
 }
 
 template<>
 inline void Uniform<glm::mat4>::apply() const {
     if (isValid()) {
-        glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value_provider()));
+        glUniformMatrix4fv(m_location, 1, GL_FALSE, glm::value_ptr(value_provider()));
     }
 }
 

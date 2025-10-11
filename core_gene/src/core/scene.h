@@ -8,17 +8,20 @@
 #include <vector>
 #include <iostream>
 
+#include "node.h"
+#include "node_builder.h"
 #include "../gl_base/shader.h"
 #include "../gl_base/transform.h"
-#include "node.h"
-#include "../components/component.h" 
+#include "../components/component.h"
+#include "../exceptions/node_not_found_exception.h"
 
 namespace scene {
 
+// Forward-declare the NodeBuilder class. Its full definition is in node_builder.h
+class NodeBuilder;
+
 class SceneGraph;
 using SceneGraphPtr = std::shared_ptr<SceneGraph>;
-
-class SceneGraphVisitor;
 
 class SceneGraph {
 private:
@@ -35,44 +38,57 @@ private:
         view_transform->orthographic(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f); // Ortográfica padrão
     }
 
+    friend class NodeBuilder;
     friend SceneGraphPtr graph();
-    friend class SceneGraphVisitor;
 
     void registerNode(node::NodePtr node) {
+        if (name_map.count(node->getName())) {
+            std::cerr << "Warning: A node with name '" << node->getName() << "' is already registered. Names should be unique." << std::endl;
+        }
         name_map[node->getName()] = node;
         node_map[node->getId()] = node;
     }
 
 public:
+    // --- Builder Pattern Entry Point ---
+    /**
+     * @brief Begins a fluent build process by adding a new node to the root of the scene.
+     * @param name The name of the new node.
+     * @return A NodeBuilder for the newly created node.
+     */
+    NodeBuilder addNode(const std::string& name); // Implementation is in node_builder.h
+
+    // --- Core Graph Management (used by the builder and for direct manipulation) ---
     node::NodePtr getRoot() const {
         return root;
     }
 
     node::NodePtr getNodeByName(const std::string& name) {
         auto it = name_map.find(name);
-        if (it != name_map.end()) {
-            return it->second;
-        }
-        return nullptr;
+        return (it != name_map.end()) ? it->second : nullptr;
     }
 
     node::NodePtr getNodeById(int id) {
         auto it = node_map.find(id);
-        if (it != node_map.end()) {
-            return it->second;
-        }
-        return nullptr;
+        return (it != node_map.end()) ? it->second : nullptr;
     }
 
-    void addNode(node::NodePtr node, node::NodePtr parent = nullptr) {
-        if (!parent) {
-            parent = root;
+    /**
+     * @brief Finds a node by name and returns a NodeBuilder to begin a fluent build process from it.
+     * @param name The name of the existing node to find.
+     * @return A NodeBuilder for the found node.
+     * @throws NodeNotFoundException if the node is not found.
+     */
+    NodeBuilder buildAt(const std::string& name) {
+        node::NodePtr node = getNodeByName(name);
+        if (node) {
+            return NodeBuilder(node);
         }
-        parent->addChild(node);
-        registerNode(node);
+        throw exception::NodeNotFoundException(name);
     }
 
-    node::NodePtr addNode(const std::string& name, node::NodePtr parent = nullptr) {
+    // This method is still useful for direct manipulation and is used by the NodeBuilder.
+    node::NodePtr addNode(const std::string& name, node::NodePtr parent) {
         if (name_map.find(name) != name_map.end()) {
             std::cerr << "Node with name " << name << " already exists!" << std::endl;
             return nullptr;
@@ -114,7 +130,6 @@ public:
         node_map.erase(node_to_remove->getId());
     }
 
-    // TODO: Esta função precisa de fato copiar os membros do nó, especialmente a coleção de componentes.
     node::NodePtr duplicateNode(const std::string& source_name, const std::string& new_name) {
         if (name_map.find(new_name) != name_map.end()) {
             std::cerr << "Node with name " << new_name << " already exists!" << std::endl;
@@ -123,7 +138,7 @@ public:
         node::NodePtr node_to_copy = getNodeByName(source_name);
         if (node_to_copy) {
             node::NodePtr new_node = node::Node::Make(new_name);
-            // Copie componentes e outras propriedades aqui...
+            // TODO: Deep copy components from node_to_copy to new_node
             
             node::NodePtr parent = node_to_copy->getParent();
             if (parent) {
@@ -139,7 +154,6 @@ public:
             return nullptr;
         }
     }
-
 
     void setView(float left, float right, float bottom, float top, float near, float far) {
         view_transform->orthographic(left, right, bottom, top, near, far);
@@ -189,12 +203,12 @@ public:
         }
     }
 };
-    
+
 inline SceneGraphPtr graph() {
     static SceneGraphPtr instance = SceneGraphPtr(new SceneGraph());
     return instance;
 }
 
-}
+} // namespace scene
 
-#endif
+#endif // SCENE_H

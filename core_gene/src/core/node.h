@@ -11,10 +11,6 @@
 #include "components/component_collection.h"
 #include "components/component.h"
 
-// #include "geometry.h"
-// #include "transform.h"
-// #include "shader.h"
-
 namespace scene {
     class SceneGraph;
 }

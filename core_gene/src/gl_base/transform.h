@@ -19,7 +19,7 @@ using TransformPtr = std::shared_ptr<Transform>;
 class TransformStack;
 using TransformStackPtr = std::shared_ptr<TransformStack>;
 
-class Transform {
+class Transform : public std::enable_shared_from_this<Transform> {
     glm::mat4 matrix; // Matriz de transformação 4x4
     Transform() {
         // Inicializa a matriz como identidade
@@ -43,28 +43,33 @@ class Transform {
             return matrix;
         }
 
-        void reset() {
+        TransformPtr reset() {
             matrix = glm::mat4(1.0f);
+            return shared_from_this();
         }
 
-        void setMatrix(glm::mat4 matrix) {
+        TransformPtr setMatrix(glm::mat4 matrix) {
             this->matrix = matrix;
+            return shared_from_this();
         }
 
-        void multiply(const glm::mat4& other) {
+        TransformPtr multiply(const glm::mat4& other) {
             matrix = matrix * other;
+            return shared_from_this();
         }
 
-        void translate(float x, float y, float z) {
+        TransformPtr translate(float x, float y, float z) {
             matrix = glm::translate(matrix, glm::vec3(x, y, z));
+            return shared_from_this();
         }
 
-        void setTranslate(float x, float y, float z) {
+        TransformPtr setTranslate(float x, float y, float z) {
             reset();
             translate(x, y, z);
+            return shared_from_this();
         }
 
-        void rotate(float angle_degrees, float axis_x, float axis_y, float axis_z) {
+        TransformPtr rotate(float angle_degrees, float axis_x, float axis_y, float axis_z) {
             // checks if axis is normalized
             float angle_radians = glm::radians(angle_degrees);
             glm::vec3 axis(axis_x, axis_y, axis_z);
@@ -73,24 +78,29 @@ class Transform {
                 axis = glm::normalize(axis);
             }
             matrix = glm::rotate(matrix, angle_radians, axis);
+            return shared_from_this();
         }
 
-        void setRotate(float angle_degrees, float axis_x, float axis_y, float axis_z) {
+        TransformPtr setRotate(float angle_degrees, float axis_x, float axis_y, float axis_z) {
             reset();
             rotate(angle_degrees, axis_x, axis_y, axis_z);
+            return shared_from_this();
         }
 
-        void scale(float x, float y, float z) {
+        TransformPtr scale(float x, float y, float z) {
             matrix = glm::scale(matrix, glm::vec3(x, y, z));
+            return shared_from_this();
         }
 
-        void setScale(float x, float y, float z) {
+        TransformPtr setScale(float x, float y, float z) {
             reset();
             scale(x, y, z);
+            return shared_from_this();
         }
 
-        void orthographic(float left, float right, float bottom, float top, float near, float far) {
+        TransformPtr orthographic(float left, float right, float bottom, float top, float near, float far) {
             matrix = glm::ortho(left, right, bottom, top, near, far);
+            return shared_from_this();
         }
 };
 

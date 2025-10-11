@@ -174,7 +174,7 @@ public:
         if (!child) return;
         auto it = std::find(children.begin(), children.end(), child);
         if (it != children.end()) {
-            (*it)->setParent(nullptr);
+            (*it)->setParent({});
             children.erase(it);
         } else {
             std::cerr << "Child not found in removeChild" << std::endl;

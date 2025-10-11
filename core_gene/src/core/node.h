@@ -4,113 +4,89 @@
 
 #include <memory>
 #include <vector>
-#include <algorithm>
 #include <string>
+#include <functional>
+#include <utility>
+#include <algorithm>
 #include <iostream>
-#include "gl_base/error.h"
-#include "components/component_collection.h"
-#include "components/component.h"
-
-namespace scene {
-    class SceneGraph;
-}
 
 namespace node {
 
-class Node;
-using NodePtr = std::shared_ptr<Node>;
+/**
+ * @class Node
+ * @brief A generic, templated class for representing a node in a tree structure.
+ *
+ * This class manages the hierarchical relationships (parent/child) and contains
+ * a user-defined 'PayloadType'. It is responsible for traversal logic but delegates
+ * the specific actions performed during traversal to the caller via the visit() method.
+ *
+ * @tparam PayloadType The type of data or behavior object this node will contain.
+ */
+template <typename PayloadType>
+class Node : public std::enable_shared_from_this<Node<PayloadType>> {
+public:
+    // Type aliases for cleaner code
+    using NodePtr = std::shared_ptr<Node<PayloadType>>;
+    using ParentPtr = std::weak_ptr<Node<PayloadType>>;
 
-using ParentPtr = std::weak_ptr<Node>; // ponteiro fraco para evitar ciclos de referência
-
-class Node : public std::enable_shared_from_this<Node>{
 private:
     int id;
     inline static int next_id = 0;
     std::string name;
     std::vector<NodePtr> children;
-    int child_count = 0;
-    ParentPtr parent; // pode ser nulo
+    ParentPtr parent;
     bool applicability = true;
-    bool local_applicability = true;
-    ComponentCollection components;
 
-    
-    friend class scene::SceneGraph;
+    // The node now stores its own behavior (its "strategy")
+    std::function<void(Node<PayloadType>&)> pre_visit_action_;
+    std::function<void(Node<PayloadType>&)> post_visit_action_;
+    PayloadType payload_;
 
-protected:
-    
-    Node(std::string name) : 
-    name(name)
-    {
+    // Private constructor to enforce creation via the static Make() function.
+    explicit Node(std::string name) : name(std::move(name)) {
         id = next_id++;
     }
 
-    void setName(const std::string& new_name) {
-        name = new_name;
-    }
-
-    void setParent(NodePtr new_parent) {
+    // Private setter for parent to be controlled by child management methods.
+    void setParent(ParentPtr new_parent) {
         parent = new_parent;
     }
 
-    void setApplicability(bool new_applicability) {
-        applicability = new_applicability;
-    }
-
-    // ComponentCollection getCollectionCopy() {
-    //     return components.copy();
-    // }
-
 public:
-
+    /**
+     * @brief Factory function to create a new Node.
+     * @param name The name of the node.
+     * @return A shared pointer to the newly created Node.
+     */
     static NodePtr Make(std::string name) {
-        return NodePtr(new Node(name));
+        return NodePtr(new Node<PayloadType>(std::move(name)));
     }
 
-    static NodePtr Make(std::string name, NodePtr parent) {
-        NodePtr n = NodePtr(new Node(name));
-        n->parent = parent;
-        return n;
-    }
+    // --- Payload Access ---
+    /**
+     * @brief Gets a mutable reference to the node's payload.
+     */
+    PayloadType& payload() { return payload_; }
 
-    int getId() const {
-        return id;
-    }
+    /**
+     * @brief Gets a constant reference to the node's payload.
+     */
+    const PayloadType& payload() const { return payload_; }
 
-    const std::string& getName() const {
-        return name;
-    }
+    // --- Core Getters ---
+    int getId() const { return id; }
+    const std::string& getName() const { return name; }
+    NodePtr getParent() const { return parent.lock(); }
+    bool getApplicability() const { return applicability; }
 
-    NodePtr getParent() const {
-        return parent.lock();
-    }
+    // --- Core Setters ---
+    void setName(const std::string& new_name) { name = new_name; }
+    void setApplicability(bool new_applicability) { applicability = new_applicability; }
 
-    bool getApplicability() const {
-        return applicability;
-    }
-
-    bool getLocalApplicability() const {
-        return local_applicability;
-    }
-
-    void addComponent(component::ComponentPtr new_component) {
-        components.addComponent(new_component);
-    }
-
-    void removeComponent(int component_id) {
-        components.removeComponent(component_id);
-    }
-
-    void removeComponentByIndex(int index) {
-        components.removeComponentByIndex(index);
-    }
-
+    // --- Hierarchy Management ---
+    
     int getChildCount() const {
-        return child_count;
-    }
-
-    void updateChildCount() {
-        child_count = children.size();
+        return children.size();
     }
 
     NodePtr getChild(int index) const {
@@ -122,62 +98,58 @@ public:
     }
 
     NodePtr getChildByName(const std::string& child_name) const {
-        for (NodePtr child : children) {
-            if (child->name == child_name) {
+        for (const NodePtr& child : children) {
+            if (child->getName() == child_name) {
                 return child;
             }
         }
-        std::cerr << "Child with name " << child_name << " not found in getChildByName" << std::endl;
+        // This is a common lookup, returning nullptr is sufficient.
+        // A loud error can be added by the caller if needed.
         return nullptr;
     }
 
-    int getChildIndex(std::string& child) const {
-        for (int i = 0; i < children.size(); i++) {
-            if (children[i]->name == child) {
-                return i;
-            }
-        }
-        std::cerr << "Child with name " << child << " not found in getChildIndex" << std::endl;
-        return -1;
-    }
-
-    int getChildIndex(NodePtr child) const {
+    int getChildIndex(const NodePtr& child) const {
         for (int i = 0; i < children.size(); i++) {
             if (children[i] == child) {
                 return i;
             }
         }
-        std::cerr << "Child not found in getChildIndex" << std::endl;
-        return -1;
+        return -1; // Not found
     }
 
-    void addChild(NodePtr child) {
-        children.push_back(child);
-        child->setParent(shared_from_this());
+    void addChild(const NodePtr& child) {
+        if (child) {
+            children.push_back(child);
+            child->setParent(this->shared_from_this());
+        }
     }
 
-    void addChild(NodePtr child, int index) {
+    void addChild(const NodePtr& child, int index) {
+        if (!child) return;
         if (index < 0 || index > children.size()) {
             std::cerr << "Index out of bounds in addChild" << std::endl;
             return;
         }
         children.insert(children.begin() + index, child);
-        child->setParent(shared_from_this());
+        child->setParent(this->shared_from_this());
     }
 
-    void addChildFront(NodePtr child) {
-        children.insert(children.begin(), child);
-        child->setParent(shared_from_this());
+    void addChildFront(const NodePtr& child) {
+        if (child) {
+            children.insert(children.begin(), child);
+            child->setParent(this->shared_from_this());
+        }
     }
 
-    void addChildAfter(NodePtr child, NodePtr after) {
+    void addChildAfter(const NodePtr& child, const NodePtr& after) {
+        if (!child || !after) return;
         auto it = std::find(children.begin(), children.end(), after);
         if (it != children.end()) {
             children.insert(it + 1, child);
+            child->setParent(this->shared_from_this());
         } else {
             std::cerr << "Reference child not found in addChildAfter" << std::endl;
         }
-        child->setParent(shared_from_this());
     }
 
     void moveChild(int from_idx, int to_idx) {
@@ -185,9 +157,9 @@ public:
             std::cerr << "Index out of bounds in moveChild" << std::endl;
             return;
         }
-        NodePtr child = children[from_idx];
+        NodePtr child_to_move = children[from_idx];
         children.erase(children.begin() + from_idx);
-        children.insert(children.begin() + to_idx, child);
+        children.insert(children.begin() + to_idx, child_to_move);
     }
 
     void swapChildren(int idx1, int idx2) {
@@ -198,7 +170,8 @@ public:
         std::swap(children[idx1], children[idx2]);
     }
 
-    void removeChild(NodePtr child) {
+    void removeChild(const NodePtr& child) {
+        if (!child) return;
         auto it = std::find(children.begin(), children.end(), child);
         if (it != children.end()) {
             (*it)->setParent(nullptr);
@@ -208,30 +181,66 @@ public:
         }
     }
 
-    void draw(bool print = false) {
+
+
+    // --- Behavior Management API ---
+
+    /**
+     * @brief Sets the action to be performed on this node BEFORE visiting children.
+     * @param action The function to execute.
+     */
+    void onPreVisit(const std::function<void(Node<PayloadType>&)>& action) {
+        pre_visit_action_ = action;
+    }
+
+    /**
+     * @brief Sets the action to be performed on this node AFTER visiting children.
+     * @param action The function to execute.
+     */
+    void onPostVisit(const std::function<void(Node<PayloadType>&)>& action) {
+        post_visit_action_ = action;
+    }
+
+    /**
+     * @brief Detaches all actions from this node.
+     */
+    void clearActions() {
+        pre_visit_action_ = nullptr;
+        post_visit_action_ = nullptr;
+    }
+
+    // --- Generic Traversal Method ---
+    /**
+     * @brief Traverses this node and its children, executing their stored actions.
+     *
+     * This method defines the traversal order:
+     * 1. Perform pre-visit action on the current node.
+     * 2. Recursively visit all children.
+     * 3. Perform post-visit action on the current node.
+     *
+     */
+    void visit() {
         if (!applicability) return;
-        if (print) printf("Drawing node %s (id=%d) (parent=%s)\n", name.c_str(), id, parent.lock()? parent.lock()->getName().c_str() : "NONE");
 
-        Error::Check("scene::Node::draw start");
-
-        if (local_applicability) components.apply(print);
-
-        Error::Check("scene::Node::draw after apply");
-
-        // Desenha os filhos
-        for (NodePtr child : children) {
-            child->draw(print);
+        // 1. Execute the stored pre-order action, if it exists
+        if (pre_visit_action_) {
+            pre_visit_action_(*this);
         }
-        Error::Check("scene::Node::draw after drawing children");
 
-        if (local_applicability) components.unapply();
+        // 2. Recursively visit children
+        for (const auto& child : children) {
+            if (child) {
+                child->visit();
+            }
+        }
 
-        Error::Check("scene::Node::draw end");
-        
+        // 3. Execute the stored post-order action, if it exists
+        if (post_visit_action_) {
+            post_visit_action_(*this);
+        }
     }
 };
 
-}
+} // namespace node
 
-
-#endif
+#endif // NODE_H

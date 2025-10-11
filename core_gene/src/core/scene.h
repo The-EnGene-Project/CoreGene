@@ -8,45 +8,74 @@
 #include <vector>
 #include <iostream>
 
+// Core engine headers
 #include "node.h"
-#include "node_builder.h"
-#include "../gl_base/shader.h"
+// #include "scene_node_builder.h"
+#include "../components/component_collection.h"
 #include "../gl_base/transform.h"
-#include "../components/component.h"
 #include "../exceptions/node_not_found_exception.h"
 
 namespace scene {
 
-// Forward-declare the NodeBuilder class. Its full definition is in node_builder.h
-class NodeBuilder;
+// Forward-declare the builder class for our specific SceneNode
+class SceneNodeBuilder;
+
+// --- Scene-Specific Node Definition ---
+using SceneNode = node::Node<ComponentCollection>;
+using SceneNodePtr = std::shared_ptr<SceneNode>;
 
 class SceneGraph;
 using SceneGraphPtr = std::shared_ptr<SceneGraph>;
 
 class SceneGraph {
 private:
-    node::NodePtr root;
-    std::unordered_map<std::string, node::NodePtr> name_map; // Mapeia nomes para nós
-    std::unordered_map<int, node::NodePtr> node_map;      // Mapeia IDs para nós
+    SceneNodePtr root;
+    std::unordered_map<std::string, SceneNodePtr> name_map;
+    std::unordered_map<int, SceneNodePtr> node_map;
     transform::TransformPtr view_transform;
 
     SceneGraph() {
-        root = node::Node::Make("root");
+        root = SceneNode::Make("root");
+        // ** Important: ** The root node must also be configured with behavior.
+        configureNodeForDrawing(root);
+
         name_map["root"] = root;
         node_map[root->getId()] = root;
+
+        // BACALHAU change to a Camera eventually
         view_transform = transform::Transform::Make();
-        view_transform->orthographic(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f); // Ortográfica padrão
+        view_transform->orthographic(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f);
     }
 
-    friend class NodeBuilder;
+    // The builder class for SceneNodes is a friend.
+    friend class SceneNodeBuilder;
     friend SceneGraphPtr graph();
 
-    void registerNode(node::NodePtr node) {
+    void registerNode(SceneNodePtr node) {
+        if (!node) return;
         if (name_map.count(node->getName())) {
-            std::cerr << "Warning: A node with name '" << node->getName() << "' is already registered. Names should be unique." << std::endl;
+            std::cerr << "Warning: A node with name '" << node->getName() << "' is already registered." << std::endl;
         }
         name_map[node->getName()] = node;
         node_map[node->getId()] = node;
+    }
+
+    /**
+     * @brief A centralized helper to attach drawing behavior to a node.
+     * This is the core of the Strategy Pattern implementation for drawing.
+     */
+    void configureNodeForDrawing(const SceneNodePtr& node) {
+        if (!node) return;
+
+        // The pre-visit action: apply the node's components.
+        node->onPreVisit([](SceneNode& n) {
+            n.payload().apply(); // The payload is the ComponentCollection
+        });
+
+        // The post-visit action: unapply the node's components.
+        node->onPostVisit([](SceneNode& n) {
+            n.payload().unapply();
+        });
     }
 
 public:
@@ -54,55 +83,48 @@ public:
     /**
      * @brief Begins a fluent build process by adding a new node to the root of the scene.
      * @param name The name of the new node.
-     * @return A NodeBuilder for the newly created node.
+     * @return A SceneNodeBuilder for the newly created node.
      */
-    NodeBuilder addNode(const std::string& name); // Implementation is in node_builder.h
+    SceneNodeBuilder addNode(const std::string& name);
 
     // --- Core Graph Management (used by the builder and for direct manipulation) ---
-    node::NodePtr getRoot() const {
-        return root;
-    }
+    SceneNodePtr getRoot() const { return root; }
 
-    node::NodePtr getNodeByName(const std::string& name) {
+    SceneNodePtr getNodeByName(const std::string& name) {
         auto it = name_map.find(name);
         return (it != name_map.end()) ? it->second : nullptr;
     }
 
-    node::NodePtr getNodeById(int id) {
+    SceneNodePtr getNodeById(int id) {
         auto it = node_map.find(id);
         return (it != node_map.end()) ? it->second : nullptr;
     }
 
     /**
-     * @brief Finds a node by name and returns a NodeBuilder to begin a fluent build process from it.
+     * @brief Finds a node by name and returns a SceneNodeBuilder to begin a fluent build process from it.
      * @param name The name of the existing node to find.
-     * @return A NodeBuilder for the found node.
+     * @return A SceneNodeBuilder for the found node.
      * @throws NodeNotFoundException if the node is not found.
      */
-    NodeBuilder buildAt(const std::string& name) {
-        node::NodePtr node = getNodeByName(name);
-        if (node) {
-            return NodeBuilder(node);
-        }
-        throw exception::NodeNotFoundException(name);
-    }
+    SceneNodeBuilder buildAt(const std::string& name);
 
-    // This method is still useful for direct manipulation and is used by the NodeBuilder.
-    node::NodePtr addNode(const std::string& name, node::NodePtr parent) {
+    // Internal workhorse method used by the builder.
+    SceneNodePtr addNode(const std::string& name, SceneNodePtr parent) {
         if (name_map.find(name) != name_map.end()) {
             std::cerr << "Node with name " << name << " already exists!" << std::endl;
             return nullptr;
         }
-        if (!parent) {
-            parent = root;
-        }
-        node::NodePtr new_node = node::Node::Make(name);
-        parent->addChild(new_node);
+        
+        SceneNodePtr new_node = SceneNode::Make(name);
+        // ** CRITICAL **: Every new node gets configured for drawing by default.
+        configureNodeForDrawing(new_node);
+
+        (parent ? parent : root)->addChild(new_node);
         registerNode(new_node);
         return new_node;
     }
 
-    bool renameNode(node::NodePtr node_to_rename, const std::string& new_name) {
+    bool renameNode(SceneNodePtr node_to_rename, const std::string& new_name) {
         if (!node_to_rename) {
             std::cerr << "Cannot rename a null node!" << std::endl;
             return false;
@@ -116,13 +138,13 @@ public:
         name_map[new_name] = node_to_rename;
         return true;
     }
-
-    void removeNode(node::NodePtr node_to_remove) {
+    void removeNode(SceneNodePtr node_to_remove) {
         if (!node_to_remove || node_to_remove == root) {
             std::cerr << "Cannot remove null or root node!" << std::endl;
             return;
         }
-        node::NodePtr parent = node_to_remove->getParent();
+        
+        SceneNodePtr parent = node_to_remove->getParent();
         if (parent) {
             parent->removeChild(node_to_remove);
         }
@@ -130,17 +152,17 @@ public:
         node_map.erase(node_to_remove->getId());
     }
 
-    node::NodePtr duplicateNode(const std::string& source_name, const std::string& new_name) {
+    SceneNodePtr duplicateNode(const std::string& source_name, const std::string& new_name) {
         if (name_map.find(new_name) != name_map.end()) {
             std::cerr << "Node with name " << new_name << " already exists!" << std::endl;
             return nullptr;
         }
-        node::NodePtr node_to_copy = getNodeByName(source_name);
+        SceneNodePtr node_to_copy = getNodeByName(source_name);
         if (node_to_copy) {
-            node::NodePtr new_node = node::Node::Make(new_name);
+            SceneNodePtr new_node = SceneNode::Make(new_name);
             // TODO: Deep copy components from node_to_copy to new_node
             
-            node::NodePtr parent = node_to_copy->getParent();
+            SceneNodePtr parent = node_to_copy->getParent();
             if (parent) {
                 parent->addChild(new_node);
                 registerNode(new_node);
@@ -155,52 +177,49 @@ public:
         }
     }
 
-    void setView(float left, float right, float bottom, float top, float near, float far) {
-        view_transform->orthographic(left, right, bottom, top, near, far);
-    }
-
-    void clearGraph() {
-        root = node::Node::Make("root");
-        name_map.clear();
-        node_map.clear();
-        name_map["root"] = root;
-        node_map[root->getId()] = root;
-    }
-
-    void draw(bool print = false) {
+    /**
+     * @brief Draws the entire scene by initiating a visit from the root.
+     * Each node will execute its own attached drawing actions.
+     */
+    void draw() {
         transform::stack()->push(view_transform->getMatrix());
         if (root) {
-            root->draw(print);
+            root->visit();
         }
         transform::stack()->pop();
-        if (print) printf("\n--------------------------------\n\n");
     }
 
-    void drawSubtree(node::NodePtr node, bool print = false) {
+    /**
+     * @brief Draws a specific subtree by initiating a visit from the given node.
+     */
+    void drawSubtree(SceneNodePtr node) {
         transform::stack()->push(view_transform->getMatrix());
         if (node) {
-            node->draw(print);
+            node->visit();
         }
         transform::stack()->pop();
-        if (print) printf("\n--------------------------------\n\n");
     }
 
     void drawSubtree(const std::string& node_name) {
-        node::NodePtr node = getNodeByName(node_name);
+        SceneNodePtr node = getNodeByName(node_name);
         if (node) {
             drawSubtree(node);
         } else {
             std::cerr << "Node with name " << node_name << " not found!" << std::endl;
         }
     }
+    
+    void clearGraph() {
+        root = SceneNode::Make("root");
+        configureNodeForDrawing(root);
+        name_map.clear();
+        node_map.clear();
+        name_map["root"] = root;
+        node_map[root->getId()] = root;
+    }
 
-    void drawSubtree(const int node_id) {
-        node::NodePtr node = getNodeById(node_id);
-        if (node) {
-            drawSubtree(node);
-        } else {
-            std::cerr << "Node with id " << node_id << " not found!" << std::endl;
-        }
+    void setView(float left, float right, float bottom, float top, float near, float far) {
+        view_transform->orthographic(left, right, bottom, top, near, far);
     }
 };
 

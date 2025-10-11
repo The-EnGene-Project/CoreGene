@@ -135,5 +135,9 @@ inline TransformStackPtr stack() {
     return instance;
 }
 
+inline const glm::mat4& current() {
+    return stack()->top();
+}
+
 }
 #endif

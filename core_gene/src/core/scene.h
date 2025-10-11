@@ -6,13 +6,12 @@
 #include <unordered_map>
 #include <string>
 #include <vector>
-#include <iostream> // Para std::cerr
+#include <iostream>
 
-#include "gl_base/shader.h"
-#include "gl_base/transform.h"
+#include "../gl_base/shader.h"
+#include "../gl_base/transform.h"
 #include "node.h"
-// Supondo que component.h é incluído por node.h ou está disponível
-#include "components/component.h" 
+#include "../components/component.h" 
 
 namespace scene {
 
@@ -24,14 +23,12 @@ class SceneGraphVisitor;
 class SceneGraph {
 private:
     node::NodePtr root;
-    shader::ShaderPtr base_shader;
     std::unordered_map<std::string, node::NodePtr> name_map; // Mapeia nomes para nós
-    std::unordered_map<int, node::NodePtr> node_map;       // Mapeia IDs para nós
+    std::unordered_map<int, node::NodePtr> node_map;      // Mapeia IDs para nós
     transform::TransformPtr view_transform;
 
-    SceneGraph(shader::ShaderPtr base) {
+    SceneGraph() {
         root = node::Node::Make("root");
-        base_shader = base;
         name_map["root"] = root;
         node_map[root->getId()] = root;
         view_transform = transform::Transform::Make();
@@ -49,10 +46,6 @@ private:
 public:
     node::NodePtr getRoot() const {
         return root;
-    }
-    // BACALHAU resolver jeito melhor de fazer isso.
-    shader::ShaderPtr getBaseShader() const {
-        return base_shader;
     }
 
     node::NodePtr getNodeByName(const std::string& name) {
@@ -138,8 +131,8 @@ public:
                 registerNode(new_node);
                 return new_node;
             } else {
-                 std::cerr << "Source node has no parent, cannot duplicate!" << std::endl;
-                 return nullptr;
+                std::cerr << "Source node has no parent, cannot duplicate!" << std::endl;
+                return nullptr;
             }
         } else {
             std::cerr << "Node with name " << source_name << " not found!" << std::endl;
@@ -152,12 +145,6 @@ public:
         view_transform->orthographic(left, right, bottom, top, near, far);
     }
 
-    void initializeBaseShader(const std::string& vertex_shader_file, const std::string& fragment_shader_file) {
-        base_shader->AttachVertexShader(vertex_shader_file);
-        base_shader->AttachFragmentShader(fragment_shader_file);
-        base_shader->Link();
-    }
-
     void clearGraph() {
         root = node::Node::Make("root");
         name_map.clear();
@@ -168,23 +155,19 @@ public:
 
     void draw(bool print = false) {
         transform::stack()->push(view_transform->getMatrix());
-        shader::stack()->push(base_shader);
         if (root) {
             root->draw(print);
         }
         transform::stack()->pop();
-        shader::stack()->pop();
         if (print) printf("\n--------------------------------\n\n");
     }
 
     void drawSubtree(node::NodePtr node, bool print = false) {
         transform::stack()->push(view_transform->getMatrix());
-        shader::stack()->push(base_shader);
         if (node) {
             node->draw(print);
         }
         transform::stack()->pop();
-        shader::stack()->pop();
         if (print) printf("\n--------------------------------\n\n");
     }
 
@@ -208,8 +191,7 @@ public:
 };
     
 inline SceneGraphPtr graph() {
-    static shader::ShaderPtr default_shader = shader::Shader::Make();
-    static SceneGraphPtr instance = SceneGraphPtr(new SceneGraph(default_shader));
+    static SceneGraphPtr instance = SceneGraphPtr(new SceneGraph());
     return instance;
 }
 

@@ -9,7 +9,7 @@
 class ComponentCollection {
 private:
     std::vector<component::ComponentPtr> components;
-    bool are_components_sorted = true;
+    bool are_components_sorted = false;
 
     void sortComponents() {
         std::sort(components.begin(), components.end(),

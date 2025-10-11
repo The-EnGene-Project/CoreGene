@@ -18,7 +18,7 @@ private:
 
     unsigned int validatePriority(unsigned int p) {
         const unsigned int max_priority = static_cast<int>(ComponentPriority::CAMERA); 
-        if (p < max_priority) throw std::invalid_argument(
+        if (p > max_priority || p < 0) throw std::invalid_argument(
             "Invalid priority for TransformComponent: " + std::to_string(p) +
             ". Priority must be between " + std::to_string(0) +
             " and " + std::to_string(max_priority) + "."

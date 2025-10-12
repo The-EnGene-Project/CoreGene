@@ -25,6 +25,7 @@ class TextureComponent : public Component {
 private:
     texture::TexturePtr m_texture;
     GLuint m_texture_unit;
+    std::string m_sampler_name;
 
 protected:
     /**
@@ -32,10 +33,11 @@ protected:
      * @param texture The texture resource to manage.
      * @param unit The OpenGL texture unit to bind to (e.g., GL_TEXTURE0 is unit 0).
      */
-    explicit TextureComponent(texture::TexturePtr texture, GLuint unit = 0)
+    explicit TextureComponent(texture::TexturePtr texture, std::string samplerName, GLuint unit = 0)
         : Component(ComponentPriority::APPEARANCE), // Textures are part of appearance.
           m_texture(texture),
-          m_texture_unit(unit)
+          m_texture_unit(unit),
+          m_sampler_name(std::move(samplerName))
     {
     }
 
@@ -50,8 +52,8 @@ public:
      * @param unit The OpenGL texture unit to bind to.
      * @return A shared pointer to the newly created TextureComponent.
      */
-    static TextureComponentPtr Make(texture::TexturePtr texture, GLuint unit = 0) {
-        return TextureComponentPtr(new TextureComponent(texture, unit));
+    static TextureComponentPtr Make(texture::TexturePtr texture, std::string samplerName, GLuint unit = 0) {
+        return TextureComponentPtr(new TextureComponent(texture, std::move(samplerName), unit));
     }
 
     /**
@@ -60,7 +62,10 @@ public:
      */
     void apply() override {
         if (m_texture) {
+            // 1. Push texture to the stack to bind it (existing logic)
             texture::stack()->push(m_texture, m_texture_unit);
+            // 2. Register this component's sampler-to-unit mapping
+            texture::stack()->registerSamplerUnit(m_sampler_name, m_texture_unit);
         }
     }
 
@@ -70,7 +75,9 @@ public:
      */
     void unapply() override {
         if (m_texture) {
-            // The pop operation on the stack handles restoring the previous state.
+            // 1. Un-register the mapping
+            texture::stack()->unregisterSamplerUnit(m_sampler_name);
+            // 2. Pop the stack to restore previous texture state
             texture::stack()->pop();
         }
     }

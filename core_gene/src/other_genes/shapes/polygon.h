@@ -5,13 +5,13 @@ using PolygonPtr = std::shared_ptr<Polygon>;
 #ifndef POLYGON_H
 #define POLYGON_H
 #pragma once
-#include "../gl_base/gl_includes.h"
-#include "../gl_base/geometry.h"
+#include "../../gl_base/gl_includes.h"
+#include "../../gl_base/geometry.h"
 
 class Polygon : public geometry::Geometry {
 protected:
   Polygon(float* dados_vertices, unsigned int* indices, int nverts, int n_indices, const std::vector<int>& attr_sizes = {3}) : 
-    geometry::Geometry(dados_vertices, indices, nverts, n_indices, attr_sizes) 
+    geometry::Geometry(dados_vertices, indices, nverts, n_indices, 2, attr_sizes) 
     {};
 public:
   static PolygonPtr Make (float* posicoes, float* cores, unsigned int* indices, int nverts, int n_indices) {

@@ -29,15 +29,14 @@ protected:
     // Construtor agora armazena vbo e ebo
     // Novo argumento: const std::vector<int>& attr_sizes
     // attr_sizes: cada elemento indica quantos floats para cada atributo extra (além da posição)
-    Geometry(float* dados_vertices, unsigned int* indices, int nverts, int n_indices, const std::vector<int>& attr_sizes) : 
+    Geometry(float* dados_vertices, unsigned int* indices, int nverts, int n_indices, int pos_size, const std::vector<int>& attr_sizes) : 
     nverts(nverts),
     n_indices(n_indices)
     {
         // Define os parâmetros para o Draw()
         mode = GL_TRIANGLES;
         type = GL_UNSIGNED_INT;
-        // Cada vértice tem 2 floats para posição e N floats para atributos extras
-        int amt_of_floats_per_vertex = 2; // posição
+        int amt_of_floats_per_vertex = pos_size;
         for (int sz : attr_sizes) amt_of_floats_per_vertex += sz;
         int vertex_stride_in_bytes = amt_of_floats_per_vertex * sizeof(float);
 
@@ -57,7 +56,7 @@ protected:
 
         // Configura atributos extras
         int attrib_index = 1;
-        int offset_floats = 2;
+        int offset_floats = pos_size;
         for (int sz : attr_sizes) {
             glVertexAttribPointer(attrib_index, sz, GL_FLOAT, GL_FALSE, vertex_stride_in_bytes, (void*)(offset_floats * sizeof(float)));
             glEnableVertexAttribArray(attrib_index);
@@ -79,9 +78,9 @@ protected:
 
 public:
     // Novo argumento: const std::vector<int>& attr_sizes
-    static GeometryPtr Make(float* dados_vertices, unsigned int* indices, int nverts, int n_indices, const std::vector<int>& attr_sizes) {
+    static GeometryPtr Make(float* dados_vertices, unsigned int* indices, int nverts, int n_indices, int pos_size, const std::vector<int>& attr_sizes) {
         // é trabalho do caller interpolar as posições e cores
-        return GeometryPtr(new Geometry(dados_vertices, indices, nverts, n_indices, attr_sizes));
+        return GeometryPtr(new Geometry(dados_vertices, indices, nverts, n_indices, pos_size, attr_sizes));
     }
 
     // Destrutor que libera os buffers da GPU

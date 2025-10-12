@@ -1,9 +1,11 @@
 #include <EnGene.h>
 #include <core/scene.h>
 #include <core/scene_node_builder.h>
-#include <shapes/circle.h>
+#include <other_genes/shapes/circle.h>
+#include <other_genes/textured_shapes/textured_circle.h>
 #include <other_genes/basic_input_handler.h>
 #include <gl_base/error.h>
+#include <gl_base/shader.h>
 #include <components/all.h>
 
 #define BACKGROUND_COLOR 0.05f, 0.05f, 0.1f
@@ -13,9 +15,18 @@ int main() {
     // Shader initialization is moved outside.
     transform::TransformPtr sun_rotation;
     transform::TransformPtr earth_orbit;
+    transform::TransformPtr earth_rotation;
     auto on_init = [&](engene::EnGene& app) {
         // configures the uniforms from the base shader.
         app.getBaseShader()->configureUniform<glm::mat4>("M", transform::current);
+
+        // creates the texture shader and configures it's uniforms
+        shader::ShaderPtr textured_shader = shader::Shader::Make(
+        "../shaders/textured_vertex.glsl",
+        "../shaders/textured_fragment.glsl"
+        )
+        ->configureUniform<glm::mat4>("M", transform::current)
+        ->configureUniform<int>("tex", texture::getUnitProvider("tex"));
 
         // 1. Build the Sun
         // We start a chain from the graph's root. The .with<T>() methods
@@ -41,39 +52,50 @@ int main() {
         // 2. Build the Earth System
         // We start a *new* chain from the root for the orbital pivot.
         earth_orbit = transform::Transform::Make();
+        earth_rotation = transform::Transform::Make();
         // Chaining .addNode() creates a child-parent relationship.
         scene::graph()->addNode("Earth") 
             .with<component::GeometryComponent>(
-                Circle::Make(
+                TexturedCircle::Make(
                     0.0f, 0.0f,         // center pos
                     0.1f,               // radius
-                    (float[]) {         // colors
-                        0.0f, 0.1f, 0.5f // center
-                    },
                     32,                 // segments
-                    false               // no gradient
+                    0.5f, 0.5f,
+                    0.45f
                 )
+            )
+            .with<component::ShaderComponent>(textured_shader)
+            .with<component::TextureComponent>(
+                texture::Texture::Make("../assets/images/earth_from_space.jpg"),
+                "tex",
+                0
             )
             .with<component::TransformComponent>(
                 transform::Transform::Make()->translate(0.7f, 0.0f, 0.0f)
             )
             .with<component::TransformComponent>(
                 earth_orbit, 99
+            )
+            .with<component::TransformComponent>(
+                earth_rotation, 101
             );
     };
 
     // Define the user's per-frame update and drawing logic
-    auto on_update = [&]() {
+    auto on_update = [&](double time_elapsed) {
         // This code runs every frame.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         // ... update object positions, handle animations ...
 
         if (sun_rotation) {
-            sun_rotation->rotate(-0.5f, 0, 0, 1); // Rotate the sun slowly
+            sun_rotation->rotate(0.25f, 0, 0, 1); // Rotate the sun slowly
         }
         if (earth_orbit) {
-            earth_orbit->rotate(1.2f, 0, 0, 1); // Orbit the earth faster
+            earth_orbit->rotate(0.6f, 0, 0, 1); // Orbit the earth faster
+        }
+        if (earth_rotation) {
+            earth_rotation->rotate(3.0f, 0, 0, -1);
         }
         
         scene::graph()->draw();

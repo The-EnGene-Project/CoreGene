@@ -23,7 +23,7 @@ protected:
 
 public:
 
-    ShaderComponentPtr Make(shader::ShaderPtr s) {
+    static ShaderComponentPtr Make(shader::ShaderPtr s) {
         return ShaderComponentPtr(new ShaderComponent(s));
     }
     

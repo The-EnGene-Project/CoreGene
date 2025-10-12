@@ -7,8 +7,9 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <map>
+#include <unordered_map>
 #include <iostream>
+#include <functional>
 
 #include "gl_includes.h"
 #include "error.h"
@@ -130,10 +131,12 @@ private:
     // This is the core of the state machine.
     // It's a stack of maps. Each map represents the complete texture state
     // (all active units) at that point in the scene graph.
-    std::vector<std::map<GLuint, TexturePtr>> m_stack;
+    std::vector<std::unordered_map<GLuint, TexturePtr>> m_stack;
+    // This map links a sampler uniform name to a texture unit.
+    std::unordered_map<std::string, GLuint> m_sampler_to_unit_map;
 
     // This map tracks the ACTUAL state on the GPU to prevent redundant calls.
-    std::map<GLuint, TexturePtr> m_active_gpu_state;
+    std::unordered_map<GLuint, TexturePtr> m_active_gpu_state;
 
     TextureStack() {
         // Start with a base level on the stack representing the default (empty) state.
@@ -204,12 +207,44 @@ public:
         // 4. Update our cache to match the new state.
         m_active_gpu_state = state_to_restore;
     }
+
+    // NEW: Called by TextureComponent during its 'apply' phase.
+    void registerSamplerUnit(const std::string& sampler_name, GLuint unit) {
+        m_sampler_to_unit_map[sampler_name] = unit;
+    }
+
+    // NEW: Called by TextureComponent during its 'unapply' phase.
+    void unregisterSamplerUnit(const std::string& sampler_name) {
+        m_sampler_to_unit_map.erase(sampler_name);
+    }
+
+    // NEW: Called by the shader's uniform provider to get the current unit for a sampler.
+    GLuint getUnitForSampler(const std::string& sampler_name) const {
+        auto it = m_sampler_to_unit_map.find(sampler_name);
+        if (it != m_sampler_to_unit_map.end()) {
+            return it->second;
+        }
+        // Return 0 and log a warning if the sampler isn't registered.
+        // Returning 0 is often a safe default.
+        std::cerr << "Warning: Sampler '" << sampler_name << "' not registered. Defaulting to unit 0." << std::endl;
+        return 0;
+    }
 };
 
 // Singleton accessor function, just like shader::stack().
 inline TextureStackPtr stack() {
     static TextureStackPtr instance = TextureStackPtr(new TextureStack());
     return instance;
+}
+
+// This is the bridge between the shader system and the texture system.
+inline std::function<int()> getUnitProvider(const std::string& samplerName) {
+    // Return a lambda that captures the sampler name by value.
+    // This lambda will be called by the shader every frame to get the uniform's value.
+    return [samplerName]() -> int {
+        // It pulls the up-to-date texture unit from the global stack.
+        return static_cast<int>(texture::stack()->getUnitForSampler(samplerName));
+    };
 }
 
 } // namespace texture

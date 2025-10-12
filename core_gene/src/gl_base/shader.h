@@ -80,7 +80,7 @@ static GLuint MakeShader(GLenum shadertype, const std::string& filename) {
 
 static const char* GLenumToString(GLenum type);
 
-class Shader {
+class Shader : public std::enable_shared_from_this<Shader> {
 private:
     unsigned int m_pid;
     // Mapa para armazenar os uniformes configurados
@@ -223,7 +223,7 @@ public:
 
     // Configura um uniforme dinâmico
     template<typename T>
-    void configureUniform(const std::string& name, std::function<T()> value_provider) {
+    ShaderPtr configureUniform(const std::string& name, std::function<T()> value_provider) {
         // 1. Cria o objeto Uniform.
         auto uniform_obj = Uniform<T>::Make(name, std::move(value_provider));
         
@@ -232,6 +232,8 @@ public:
         
         // 3. Armazena o uniforme configurado no mapa.
         m_uniforms[name] = std::move(uniform_obj);
+
+        return shared_from_this();
     }
 
     // Aplica todos os uniformes configurados para este shader.
@@ -246,7 +248,6 @@ public:
         // É crucial usar o programa ANTES de enviar os valores dos uniformes.
         glUseProgram(m_pid);
         validateUniforms();
-        applyUniforms();
     }
 };
 
@@ -304,8 +305,6 @@ public:
     }
     ShaderPtr top() {
         ShaderPtr current_shader = stack.back();
-        // A lógica de otimização de usar o shader só quando muda é boa.
-        // O UseProgram agora também aplica os uniformes.
         if (current_shader != last_used_shader) {
             current_shader->UseProgram();
             last_used_shader = current_shader;

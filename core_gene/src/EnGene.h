@@ -33,7 +33,7 @@ public:
         const EnGeneConfig& config,
         input::InputHandler* handler,
         std::function<void(EnGene&)> on_initialize, // MODIFIED: Signature now passes the app reference
-        std::function<void()> on_update
+        std::function<void(double)> on_update
     ) : m_width(config.width),
         m_height(config.height),
         m_title(config.title),
@@ -111,7 +111,7 @@ public:
                 shader::stack()->push(m_base_shader);
                 
                 if (m_user_update_func) {
-                    m_user_update_func();
+                    m_user_update_func(elapsed_time);
                 }
 
                 shader::stack()->pop();
@@ -139,7 +139,7 @@ private:
 
     // User-provided functions
     std::function<void(EnGene&)> m_user_initialize_func;
-    std::function<void()> m_user_update_func;
+    std::function<void(double)> m_user_update_func;
 
     /**
      * @brief Handles all the boilerplate for setting up GLFW, GLAD, and the window.

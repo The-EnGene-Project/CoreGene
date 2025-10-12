@@ -41,6 +41,12 @@ public:
     using CursorPosCallback = std::function<void(GLFWwindow*, double, double)>;
     using FramebufferSizeCallback = std::function<void(GLFWwindow*, int, int)>;
 
+    // --- Convenience Macros for Lambda Signatures ---
+    #define KEY_HANDLER_ARGS 				GLFWwindow* window, int key, int scancode, int action, int mods
+    #define MOUSE_BUTTON_HANDLER_ARGS 		GLFWwindow* window, int button, int action, int mods
+    #define CURSOR_POS_HANDLER_ARGS 		GLFWwindow* window, double xpos, double ypos
+    #define FRAMEBUFFER_SIZE_HANDLER_ARGS 	GLFWwindow* window, int width, int height
+
     virtual ~InputHandler() = default;
 
     void applyCallbacks(GLFWwindow* window) {
@@ -52,54 +58,50 @@ public:
     }
 
     /**
-     * @brief Registers a callable (like a lambda) for a specific input type.
-     *
-     * This template function deduces the type of the provided callable and attempts
-     * to assign it to the correct std::function based on the InputType.
-     * This is checked at COMPILE-TIME, providing a simple API with full type safety.
-     *
-     * @tparam Callable The type of the lambda or other function object.
-     * @param type The enum value corresponding to the callback type.
-     * @param callback The lambda or function object to register.
-     */
-    template<typename Callable>
-    void registerCallback(InputType type, Callable callback) {
-        switch (type) {
-            case InputType::KEY:
-                // `if constexpr` checks this at compile time.
-                if constexpr (std::is_constructible_v<KeyCallback, Callable>) {
-                    m_key_callback = callback;
-                } else {
-                    // This will cause a clear compile error if the lambda signature is wrong.
-                    static_assert(false, "The provided lambda/function is not compatible with the KeyCallback signature.");
-                }
-                break;
-
-            case InputType::MOUSE_BUTTON:
-                if constexpr (std::is_constructible_v<MouseButtonCallback, Callable>) {
-                    m_mouse_button_callback = callback;
-                } else {
-                    static_assert(false, "The provided lambda/function is not compatible with the MouseButtonCallback signature.");
-                }
-                break;
-
-            case InputType::CURSOR_POSITION:
-                if constexpr (std::is_constructible_v<CursorPosCallback, Callable>) {
-                    m_cursor_pos_callback = callback;
-                } else {
-                    static_assert(false, "The provided lambda/function is not compatible with the CursorPosCallback signature.");
-                }
-                break;
-
-            case InputType::FRAMEBUFFER_SIZE:
-                 if constexpr (std::is_constructible_v<FramebufferSizeCallback, Callable>) {
-                    m_framebuffer_size_callback = callback;
-                } else {
-                    static_assert(false, "The provided lambda/function is not compatible with the FramebufferSizeCallback signature.");
-                }
-                break;
+ * @brief Registers a callable for a specific input type using a template parameter.
+ *
+ * This function uses the InputType enum as a compile-time parameter to ensure
+ * the provided lambda has the correct signature.
+ *
+ * @tparam T The enum value from InputType corresponding to the callback type.
+ * @tparam Callable The type of the lambda or other function object.
+ * @param callback The lambda or function object to register.
+ */
+template<InputType T, typename Callable>
+void registerCallback(Callable callback) {
+    if constexpr (T == InputType::KEY) {
+        if constexpr (std::is_constructible_v<KeyCallback, Callable>) {
+            m_key_callback = callback;
+        } else {
+            static_assert(std::is_constructible_v<KeyCallback, Callable>,
+                "The provided function is not compatible with the KeyCallback signature.");
         }
     }
+    else if constexpr (T == InputType::MOUSE_BUTTON) {
+        if constexpr (std::is_constructible_v<MouseButtonCallback, Callable>) {
+            m_mouse_button_callback = callback;
+        } else {
+            static_assert(std::is_constructible_v<MouseButtonCallback, Callable>,
+                "The provided function is not compatible with the MouseButtonCallback signature.");
+        }
+    }
+    else if constexpr (T == InputType::CURSOR_POSITION) {
+        if constexpr (std::is_constructible_v<CursorPosCallback, Callable>) {
+            m_cursor_pos_callback = callback;
+        } else {
+            static_assert(std::is_constructible_v<CursorPosCallback, Callable>,
+                "The provided function is not compatible with the CursorPosCallback signature.");
+        }
+    }
+    else if constexpr (T == InputType::FRAMEBUFFER_SIZE) {
+        if constexpr (std::is_constructible_v<FramebufferSizeCallback, Callable>) {
+            m_framebuffer_size_callback = callback;
+        } else {
+            static_assert(std::is_constructible_v<FramebufferSizeCallback, Callable>,
+                "The provided function is not compatible with the FramebufferSizeCallback signature.");
+        }
+    }
+}
 
 protected:
     // --- Virtual Handlers for Inheritance ---

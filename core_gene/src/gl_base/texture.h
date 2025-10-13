@@ -17,6 +17,7 @@
 // This implementation uses the popular stb_image library for loading images.
 // You'll need to add stb_image.h to your project and define STB_IMAGE_IMPLEMENTATION
 // in one of your .cpp files. You can get it from here: https://github.com/nothings/stb
+#define STB_IMAGE_STATIC // solves the case of two different .cpp including texture.h
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
@@ -80,6 +81,7 @@ private:
     GLuint m_tid;
     int m_width;
     int m_height;
+    inline static std::unordered_map<std::string, TexturePtr> s_cache;
 
 protected:
     // Constructor acquires the OpenGL resource.
@@ -97,7 +99,22 @@ protected:
     }
 public:
     static TexturePtr Make(const std::string& filename) {
-        return TexturePtr(new Texture(filename));
+        // 1. Check if the texture is already in our cache.
+        auto it = s_cache.find(filename);
+        if (it != s_cache.end()) {
+            // If it is, return the existing pointer. No new texture is created.
+            return it->second;
+        }
+
+        // 2. If not found, create a new Texture object.
+        //    The constructor will be called, loading the file and uploading to the GPU.
+        TexturePtr new_texture = TexturePtr(new Texture(filename));
+
+        // 3. Store the newly created texture in the cache for future requests.
+        s_cache[filename] = new_texture;
+
+        // 4. Return the new texture.
+        return new_texture;
     }
     ~Texture() {
         glDeleteTextures(1, &m_tid);

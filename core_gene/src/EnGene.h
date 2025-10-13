@@ -111,7 +111,7 @@ public:
                 shader::stack()->push(m_base_shader);
                 
                 if (m_user_update_func) {
-                    m_user_update_func(update_timer);
+                    m_user_update_func(m_update_interval);
                 }
 
                 shader::stack()->pop();

@@ -2,19 +2,21 @@
 #define SHADER_H
 #pragma once
 
+#include <cstdlib>
 #include <memory>
 #include <fstream>
 #include <iostream>
-#include <sstream> 
-#include <cstdlib>
+#include <sstream>
+#include <string>
 #include <vector>
 #include <unordered_map>
-#include <string>
 #include <functional>
 #include <any>
+
 #include "gl_includes.h"
 #include "error.h"
 #include "uniform.h"
+#include "../exceptions/shader_exception.h"
 
 namespace shader {
 
@@ -26,58 +28,6 @@ using ShaderStackPtr = std::shared_ptr<ShaderStack>;
 
 using UniformProviderMap = std::unordered_map<std::string, std::any>;
 
-static GLuint MakeShader(GLenum shadertype, const std::string& filename) {
-    
-    GLuint id = glCreateShader(shadertype);
-    Error::Check("create shader");
-
-    // errorcheck
-    if (id == 0) {
-        std::cerr << "Could not create shader object";
-        exit(1);
-    }
-
-    // open the shader file
-    std::ifstream fp;
-    fp.open(filename); 
-
-
-    // errorcheck
-    if (!fp.is_open()) {
-        std::cerr << "Could not open file: " << filename << std::endl;
-        exit(1);
-    } 
-
-    // read the shader file content
-    std::stringstream strStream;
-    strStream << fp.rdbuf();
-
-    // pass the source string to OpenGL
-    std::string source = strStream.str();
-    const char* csource = source.c_str();
-    glShaderSource(id, 1, &csource, 0);
-    Error::Check("set shader source");
-
-    // tell OpenGL to compile the shader
-    GLint status;
-    glCompileShader(id);
-    glGetShaderiv(id, GL_COMPILE_STATUS, &status);
-    Error::Check("compile shader");
-
-    // errorcheck
-    if (!status) {
-        GLint len;
-        glGetShaderiv(id, GL_INFO_LOG_LENGTH, &len);
-        char* message = new char[len];
-        glGetShaderInfoLog(id, len, 0, message);
-        std::cerr << filename << ":" << std::endl << message << std::endl;
-        delete [] message;
-        exit(1);
-    }
-
-    return id;
-}
-
 static const char* GLenumToString(GLenum type);
 
 class Shader : public std::enable_shared_from_this<Shader> {
@@ -87,19 +37,78 @@ private:
     std::unordered_map<std::string, UniformInterfacePtr> m_uniforms;
     mutable bool m_uniforms_validated = false;
 
-protected:
-    Shader() {
-        m_pid = -1;
+    /**
+     * @brief Helper to check if a string is likely a file path.
+     * @details A simple heuristic: if it lacks newlines and GLSL keywords, it's treated as a path.
+     */
+    static bool isLikelyFilePath(const std::string& source) {
+        // If it contains a newline or a GLSL keyword, it's almost certainly source code.
+        if (source.find('\n') != std::string::npos ||
+            source.find("#version") != std::string::npos ||
+            source.find("void main") != std::string::npos) {
+            return false;
+        }
+        // Otherwise, assume it's a path. A more robust check might look for extensions.
+        return true;
     }
 
+    /**
+     * @brief Helper to load shader source code from a file.
+     * @throws exception::ShaderException if the file cannot be opened.
+     */
+    static std::string loadSourceFromFile(const std::string& filepath) {
+        std::ifstream file(filepath);
+        if (!file.is_open()) {
+            throw exception::ShaderException("Could not open shader file: " + filepath);
+        }
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    }
+
+    /**
+     * @brief Core shader compilation function.
+     * @param shadertype GL_VERTEX_SHADER or GL_FRAGMENT_SHADER.
+     * @param source The actual GLSL source code.
+     * @param identifier A name for the shader (e.g., file path) for use in error messages.
+     * @return The OpenGL ID of the compiled shader.
+     * @throws exception::ShaderException on compilation failure.
+     */
+    static GLuint compileShaderFromSource(GLenum shadertype, const std::string& source, const std::string& identifier) {
+        GLuint id = glCreateShader(shadertype);
+        if (id == 0) {
+            throw exception::ShaderException("Could not create shader object.");
+        }
+
+        const char* c_source = source.c_str();
+        glShaderSource(id, 1, &c_source, nullptr);
+        glCompileShader(id);
+
+        GLint status;
+        glGetShaderiv(id, GL_COMPILE_STATUS, &status);
+        if (status == GL_FALSE) {
+            GLint len;
+            glGetShaderiv(id, GL_INFO_LOG_LENGTH, &len);
+            std::vector<char> message(len);
+            glGetShaderInfoLog(id, len, nullptr, message.data());
+            glDeleteShader(id); // Clean up the failed shader
+            throw exception::ShaderException("Failed to compile shader '" + identifier + "':\n" + message.data());
+        }
+
+        return id;
+    }
+
+
+protected:
+    Shader() : m_pid(-1) {}
+
     void initialize() {
-        if (m_pid != -1) {
+        if (m_pid != static_cast<unsigned int>(-1)) {
             return;
         }
         m_pid = glCreateProgram();
         if (m_pid == 0) {
-            std::cerr << "Could not create program object";
-            exit(1);
+            throw exception::ShaderException("Could not create shader program object.");
         }
     }
 
@@ -141,16 +150,17 @@ public:
         return ShaderPtr(new Shader());
     }
 
-    // Cria, anexa, linca e configura os uniformes de uma só vez.
+    // This factory function now works with both paths and source code.
+    // Creates, attaches, links and configures uniforms all at once.
     static ShaderPtr Make(
-        const std::string& vertex_shader_file, 
-        const std::string& fragment_shader_file, 
-        const UniformProviderMap& uniforms = {}) 
+        const std::string& vertex_source,
+        const std::string& fragment_source,
+        const UniformProviderMap& uniforms = {})
     {
         ShaderPtr shader = ShaderPtr(new Shader());
         shader->initialize();
-        shader->AttachVertexShader(vertex_shader_file);
-        shader->AttachFragmentShader(fragment_shader_file);
+        shader->AttachVertexShader(vertex_source);
+        shader->AttachFragmentShader(fragment_source);
         shader->Link();
 
         for (const auto& [name, any_provider] : uniforms) {
@@ -183,41 +193,75 @@ public:
 
         return shader;
     }
-    
-    virtual ~Shader(){
-        glDeleteProgram(m_pid);
+
+    virtual ~Shader() {
+        if (m_pid > 0) {
+            glDeleteProgram(m_pid);
+        }
     }
 
     unsigned int GetShaderID() const {
         return m_pid;
     }
 
-    void AttachVertexShader(const std::string& filename) {
+    /**
+     * @brief Attaches a vertex shader from a file path or a string literal.
+     */
+    void AttachVertexShader(const std::string& source_or_path) {
         initialize();
-        GLuint sid = MakeShader(GL_VERTEX_SHADER, filename);
+        std::string source_code;
+        std::string identifier;
+
+        if (isLikelyFilePath(source_or_path)) {
+            identifier = source_or_path;
+            source_code = loadSourceFromFile(source_or_path);
+        } else {
+            identifier = "Vertex Shader (from string)";
+            source_code = source_or_path;
+        }
+
+        GLuint sid = compileShaderFromSource(GL_VERTEX_SHADER, source_code, identifier);
         glAttachShader(m_pid, sid);
+        glDeleteShader(sid); // The shader object is no longer needed after attachment
     }
 
-    void AttachFragmentShader(const std::string& filename) {
+    /**
+     * @brief Attaches a fragment shader from a file path or a string literal.
+     */
+    void AttachFragmentShader(const std::string& source_or_path) {
         initialize();
-        GLuint sid = MakeShader(GL_FRAGMENT_SHADER, filename);
+        std::string source_code;
+        std::string identifier;
+
+        if (isLikelyFilePath(source_or_path)) {
+            identifier = source_or_path;
+            source_code = loadSourceFromFile(source_or_path);
+        } else {
+            identifier = "Fragment Shader (from string)";
+            source_code = source_or_path;
+        }
+        
+        GLuint sid = compileShaderFromSource(GL_FRAGMENT_SHADER, source_code, identifier);
         glAttachShader(m_pid, sid);
+        glDeleteShader(sid); // The shader object is no longer needed after attachment
     }
 
+    /**
+     * @brief Links the shader program.
+     * @throws exception::ShaderException on linking failure.
+     */
     void Link() {
         glLinkProgram(m_pid);
-        Error::Check("link program"); // It's good practice to check for errors after each call.
+        Error::Check("link program");
 
         GLint status;
         glGetProgramiv(m_pid, GL_LINK_STATUS, &status);
         if (status == GL_FALSE) {
             GLint len;
             glGetProgramiv(m_pid, GL_INFO_LOG_LENGTH, &len);
-            char* message = new char[len];
-            glGetProgramInfoLog(m_pid, len, 0, message);
-            std::cerr << "Shader linking failed: " << message << std::endl;
-            delete[] message;
-            exit(1);
+            std::vector<char> message(len);
+            glGetProgramInfoLog(m_pid, len, 0, message.data());
+            throw exception::ShaderException("Shader linking failed: " + std::string(message.data()));
         }
     }
 

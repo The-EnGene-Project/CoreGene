@@ -108,8 +108,8 @@ int main() {
         engene::EnGeneConfig config;
         /* Exclusive to C++20 and above:
         config = {
-            .base_vertex_shader_path   = "../shaders/vertex.glsl",
-            .base_fragment_shader_path = "../shaders/fragment.glsl",
+            .base_vertex_shader_source   = "../shaders/vertex.glsl",
+            .base_fragment_shader_source = "../shaders/fragment.glsl",
             .title                     = "My Modern EnGene App",
             .width                     = 800,
             .height                    = 800,
@@ -125,18 +125,18 @@ int main() {
         config.clearColor[1] = 0.05f;
         config.clearColor[2] = 0.1f;
         config.clearColor[3] = 1.0f;
-        config.base_vertex_shader_path = "../shaders/vertex.glsl";      // This is a required field.
-        config.base_fragment_shader_path = "../shaders/fragment.glsl";  // This is a required field.
+        config.base_vertex_shader_source = "../shaders/vertex.glsl";
+        config.base_fragment_shader_source = "../shaders/fragment.glsl";
 
         // 2. Create your input handler instance.
         auto* handler = new input::BasicInputHandler();
 
         // 3. Create the EnGene instance, passing in the configurations.
         engene::EnGene app(
-            config,      // Pass the config struct
-            handler,     // The input handler
             on_init,     // Your init function
-            on_update    // Your update function
+            on_update,   // Your update function
+            config,      // Pass the config struct (Optional)
+            handler      // The input handler (Optional)
         );
         
         // 4. Run the application.

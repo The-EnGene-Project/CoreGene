@@ -6,7 +6,9 @@
 #include "gl_base/gl_includes.h"
 #include "gl_base/input_handler.h"
 #include "gl_base/shader.h"
+#include "gl_base/transform.h"
 #include "core/EnGene_config.h"
+#include "exceptions/base_exception.h"
 
 #include <iostream>
 #include <string>
@@ -30,22 +32,24 @@ public:
      * @param on_update A function (often a lambda) containing the user's per-frame drawing and update code.
      */
     EnGene(
-        const EnGeneConfig& config,
-        input::InputHandler* handler,
-        std::function<void(EnGene&)> on_initialize, // MODIFIED: Signature now passes the app reference
-        std::function<void(double)> on_update
+        std::function<void(EnGene&)> on_initialize,
+        std::function<void(double)> on_update,
+        // Optional arguments now come after required ones and have default values
+        EnGeneConfig config = {}, // MODIFIED: Pass by value with a default-constructed object
+        input::InputHandler* handler = nullptr // MODIFIED: Default to nullptr
     ) : m_width(config.width),
         m_height(config.height),
         m_title(config.title),
-        m_input_handler(handler), // Takes ownership of the handler
+        // MODIFIED: Logic to handle handler creation is now inside the initializer list
+        m_input_handler(handler ? 
+            std::unique_ptr<input::InputHandler>(handler) :  // If handler is provided, take ownership
+            std::make_unique<input::InputHandler>()          // Otherwise, create a new default one
+        ),
         m_user_initialize_func(on_initialize),
         m_user_update_func(on_update)
     {
-        if (!handler) {
-            throw std::runtime_error("InputHandler cannot be null.");
-        }
-        if (config.base_vertex_shader_path.empty() || config.base_fragment_shader_path.empty()) {
-            throw std::runtime_error("Base shader paths were not set in EnGeneConfig.");
+        if (config.base_vertex_shader_source.empty() || config.base_fragment_shader_source.empty()) {
+            throw exception::EnGeneException("Base shader paths were not set in EnGeneConfig.");
         }
         
         m_update_interval = 1.0 / static_cast<double>(config.maxFramerate);
@@ -54,9 +58,13 @@ public:
 
         // creates the shader from the paths in the config.
         m_base_shader = shader::Shader::Make();
-        m_base_shader->AttachVertexShader(config.base_vertex_shader_path);
-        m_base_shader->AttachFragmentShader(config.base_fragment_shader_path);
+        m_base_shader->AttachVertexShader(config.base_vertex_shader_source);
+        m_base_shader->AttachFragmentShader(config.base_fragment_shader_source);
         m_base_shader->Link();
+
+        if (config.base_vertex_shader_source == EnGeneConfig::DEFAULT_VERTEX_SHADER) {
+            m_base_shader->configureUniform<glm::mat4>("M", transform::current);
+        }
 
         // Copy clear color from config
         m_clear_color[0] = config.clearColor[0];

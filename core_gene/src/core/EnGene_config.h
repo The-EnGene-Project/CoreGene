@@ -16,7 +16,8 @@ struct EnGeneConfig {
     int height = 800;
 
     // --- Engine Settings ---
-    int maxFramerate = 60;
+    int updatesPerSecond = 60;  // Amount of times the simulation function will be called per second. 
+    double maxFrameTime = 0.25; // Max time slice to prevent spiral of death on major lag.
     float clearColor[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
 
     // --- Shader Settings ---
@@ -26,7 +27,7 @@ struct EnGeneConfig {
     std::string base_fragment_shader_source = DEFAULT_FRAGMENT_SHADER;
 
     private:
-    // --- NEW: Default Shaders ---
+    // --- Default Shaders ---
     // Using C++ raw string literals R"(...)" for multi-line strings.
     inline static const char* DEFAULT_VERTEX_SHADER = R"(
         #version 410

@@ -26,37 +26,39 @@ public:
      * This constructor initializes GLFW, creates a window, sets up an OpenGL context,
      * and prepares the main loop.
      *
-     * @param config A struct containing all setup parameters for the engine.
+     * @param on_initialize A function that runs once for setup.
+     * @param on_fixed_update A function for simulation logic, called at a fixed rate. It receives the fixed delta time.
+     * @param on_render A function for all drawing calls, called once per frame after the simulation catches up.
+     * @param config A struct containing setup parameters for the engine.
      * @param handler A pointer to an InputHandler instance. The EnGene will take ownership of this pointer.
-     * @param on_initialize A function (often a lambda) that takes a reference to the EnGene app for setup.
-     * @param on_update A function (often a lambda) containing the user's per-frame drawing and update code.
      */
     EnGene(
         std::function<void(EnGene&)> on_initialize,
-        std::function<void(double)> on_update,
-        // Optional arguments now come after required ones and have default values
-        EnGeneConfig config = {}, // MODIFIED: Pass by value with a default-constructed object
-        input::InputHandler* handler = nullptr // MODIFIED: Default to nullptr
+        std::function<void(double)> on_fixed_update,
+        std::function<void(double)> on_render,
+        EnGeneConfig config = {},
+        input::InputHandler* handler = nullptr
     ) : m_width(config.width),
         m_height(config.height),
         m_title(config.title),
-        // MODIFIED: Logic to handle handler creation is now inside the initializer list
+        m_fixed_timestep(1.0 / static_cast<double>(config.updatesPerSecond)),
+        m_max_frame_time(config.maxFrameTime),
         m_input_handler(handler ? 
-            std::unique_ptr<input::InputHandler>(handler) :  // If handler is provided, take ownership
-            std::make_unique<input::InputHandler>()          // Otherwise, create a new default one
+            std::unique_ptr<input::InputHandler>(handler) :
+            std::make_unique<input::InputHandler>()
         ),
         m_user_initialize_func(on_initialize),
-        m_user_update_func(on_update)
+        m_user_fixed_update_func(on_fixed_update),
+        m_user_render_func(on_render)
     {
         if (config.base_vertex_shader_source.empty() || config.base_fragment_shader_source.empty()) {
             throw exception::EnGeneException("Base shader paths were not set in EnGeneConfig.");
         }
         
-        m_update_interval = 1.0 / static_cast<double>(config.maxFramerate);
+        m_fixed_timestep = 1.0 / static_cast<double>(config.updatesPerSecond);
         
         initialize_window();
 
-        // creates the shader from the paths in the config.
         m_base_shader = shader::Shader::Make();
         m_base_shader->AttachVertexShader(config.base_vertex_shader_source);
         m_base_shader->AttachFragmentShader(config.base_fragment_shader_source);
@@ -66,13 +68,11 @@ public:
             m_base_shader->configureUniform<glm::mat4>("M", transform::current);
         }
 
-        // Copy clear color from config
         m_clear_color[0] = config.clearColor[0];
         m_clear_color[1] = config.clearColor[1];
         m_clear_color[2] = config.clearColor[2];
         m_clear_color[3] = config.clearColor[3];
 
-        // Set up default OpenGL state
         glClearColor(m_clear_color[0], m_clear_color[1], m_clear_color[2], m_clear_color[3]);
         glEnable(GL_DEPTH_TEST);
     }
@@ -83,7 +83,6 @@ public:
         }
     }
 
-    // Disable copying
     EnGene(const EnGene&) = delete;
     EnGene& operator=(const EnGene&) = delete;
 
@@ -98,6 +97,7 @@ public:
     /**
      * @brief Starts the main application loop.
      * This function will not return until the user closes the window.
+     * Implements a fixed-timestep simulation loop to decouple simulation from rendering framerate.
      */
     void run() {
         // Call the user's one-time setup code, passing a reference to this app.
@@ -105,49 +105,63 @@ public:
             m_user_initialize_func(*this);
         }
 
-        double saved_time = glfwGetTime();
-        double update_timer = 0.0;
+        double last_time = glfwGetTime();
+        double accumulator = 0.0;
 
         while (!glfwWindowShouldClose(m_window)) {
             double current_time = glfwGetTime();
-            double elapsed_time = current_time - saved_time;
-            saved_time = current_time;
+            double elapsed_time = current_time - last_time;
+            last_time = current_time;
             
-            update_timer += elapsed_time;
-
-            if (update_timer >= m_update_interval) {
-                shader::stack()->push(m_base_shader);
-                
-                if (m_user_update_func) {
-                    m_user_update_func(m_update_interval);
-                }
-
-                shader::stack()->pop();
-
-                glfwSwapBuffers(m_window);
-                glfwPollEvents();
-                
-                // Reset timer. Subtracting interval helps maintain a more stable framerate
-                // in case of a long frame, rather than just setting to 0.
-                update_timer -= m_update_interval;
+            // Prevents a "spiral of death" if updates take too long by capping elapsed time.
+            if (elapsed_time > m_max_frame_time) {
+                elapsed_time = m_max_frame_time;
             }
+
+            accumulator += elapsed_time;
+
+            // Performs fixed updates to catch the simulation up to the current time.
+            while (accumulator >= m_fixed_timestep) {
+                if (m_user_fixed_update_func) {
+                    m_user_fixed_update_func(m_fixed_timestep);
+                }
+                accumulator -= m_fixed_timestep;
+            }
+
+            // This is the percentage of the way we are into the *next* simulation step.
+            const double alpha = accumulator / m_fixed_timestep;
+
+
+            // Render the single, most recent state.
+            // All drawing code now belongs in the render callback.
+            shader::stack()->push(m_base_shader);
+            
+            if (m_user_render_func) {
+                m_user_render_func(alpha);
+            }
+
+            shader::stack()->pop();
+
+            glfwSwapBuffers(m_window);
+            glfwPollEvents();
         }
     }
 
 private:
-    // Member variables
     int m_width;
     int m_height;
     std::string m_title;
     GLFWwindow* m_window = nullptr;
     shader::ShaderPtr m_base_shader;
     std::unique_ptr<input::InputHandler> m_input_handler;
-    double m_update_interval;
+    double m_fixed_timestep; // This is the duration of one simulation step.
+    double m_max_frame_time;
     float m_clear_color[4];
 
     // User-provided functions
     std::function<void(EnGene&)> m_user_initialize_func;
-    std::function<void(double)> m_user_update_func;
+    std::function<void(double)> m_user_fixed_update_func; // For physics/simulation
+    std::function<void(double)> m_user_render_func;
 
     /**
      * @brief Handles all the boilerplate for setting up GLFW, GLAD, and the window.

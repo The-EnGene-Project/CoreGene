@@ -335,10 +335,7 @@ public:
     ~ShaderStack() = default;
 
     void push(ShaderPtr shader) {
-        // only push if it's different from the current top
-        if (shader != stack.back()) {
-            stack.push_back(shader);
-        }
+        stack.push_back(shader);
     }
     void pop() {
         if (stack.size() > 1) {

@@ -27,6 +27,12 @@ public:
     static GeometryComponentPtr Make(geometry::GeometryPtr g) {
         return GeometryComponentPtr(new GeometryComponent(g));
     }
+
+    static GeometryComponentPtr Make(geometry::GeometryPtr g, const std::string& name) {
+        auto comp = GeometryComponentPtr(new GeometryComponent(g));
+        comp->setName(name);
+        return comp;
+    }
     
     virtual void apply() override {
         shader::stack()->top();

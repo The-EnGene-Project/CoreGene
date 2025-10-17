@@ -78,6 +78,7 @@ public:
     const std::string& getName() const { return name; }
     NodePtr getParent() const { return parent.lock(); }
     bool getApplicability() const { return applicability; }
+    std::vector<NodePtr> getChildren const { return children; }
 
     // --- Core Setters ---
     void setName(const std::string& new_name) { name = new_name; }
@@ -237,6 +238,43 @@ public:
         // 3. Execute the stored post-order action, if it exists
         if (post_visit_action_) {
             post_visit_action_(*this);
+        }
+    }
+
+    // --- Overloaded Traversal Method with Optional Arguments ---
+    /**
+     * @brief Traverses this node and its children using provided actions with optional arguments.
+     *
+     * This overload allows for dynamic traversal logic by accepting lambdas
+     * or other callable objects as arguments. All parameters are optional.
+     *
+     * @param pre_visit_lambda Action to execute before visiting children. Defaults to no action.
+     * @param post_visit_lambda Action to execute after visiting children. Defaults to no action.
+     * @param ignore_applicability If true, traversal proceeds regardless of the node's
+     * 'applicability' flag. Defaults to false.
+     */
+    void visit(const std::function<void(Node&)>& pre_visit_lambda = {},
+               const std::function<void(Node&)>& post_visit_lambda = {},
+               bool ignore_applicability = false) {
+        
+        // Return early if we are respecting applicability and it's false
+        if (!ignore_applicability && !applicability) return;
+
+        // 1. Execute the provided pre-order lambda if it's valid (not empty)
+        if (pre_visit_lambda) {
+            pre_visit_lambda(*this);
+        }
+
+        // 2. Recursively visit children, passing along the same lambdas and flag
+        for (const auto& child : children) {
+            if (child) {
+                child->visit(pre_visit_lambda, post_visit_lambda, ignore_applicability);
+            }
+        }
+
+        // 3. Execute the provided post-order lambda if it's valid (not empty)
+        if (post_visit_lambda) {
+            post_visit_lambda(*this);
         }
     }
 };

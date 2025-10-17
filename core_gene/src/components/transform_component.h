@@ -16,16 +16,22 @@ class TransformComponent : virtual public Component {
 private:
     transform::TransformPtr m_transform;
 
-    unsigned int validatePriority(unsigned int p) {
-        const unsigned int max_priority = static_cast<int>(ComponentPriority::CAMERA); 
-        if (p > max_priority || p < 0) throw std::invalid_argument(
-            "Invalid priority for TransformComponent: " + std::to_string(p) +
-            ". Priority must be between " + std::to_string(0) +
-            " and " + std::to_string(max_priority) + "."
-        );
+    
+
+protected:
+    // Key Change: Moved from the constructor to a protected virtual method.
+    // This allows derived classes like ICamera to define their own priority rules.
+    virtual unsigned int validatePriority(unsigned int p) const {
+        const unsigned int max_priority = static_cast<int>(ComponentPriority::CAMERA); // Standard transforms must be lower priority
+        if (p >= max_priority || p < 0) {
+            throw std::invalid_argument(
+                "Invalid priority for TransformComponent: " + std::to_string(p) +
+                ". Priority must be between " + std::to_string(0) +
+                " and " + std::to_string(max_priority) + "."
+            );
+        }
         return p;
     }
-protected:
 
     TransformComponent(transform::TransformPtr t) :
     Component(ComponentPriority::TRANSFORM),
@@ -45,6 +51,18 @@ public:
 
     static TransformComponentPtr Make(transform::TransformPtr t, unsigned int priority) {
         return TransformComponentPtr(new TransformComponent(t, priority));
+    }
+
+    static TransformComponentPtr Make(transform::TransformPtr t, const std::string& name) {
+        auto comp = TransformComponentPtr(new TransformComponent(t));
+        comp->setName(name);
+        return comp;
+    }
+
+    static TransformComponentPtr Make(transform::TransformPtr t, unsigned int priority, const std::string& name) {
+        auto comp = TransformComponentPtr(new TransformComponent(t, priority));
+        comp->setName(name);
+        return comp;
     }
     
     virtual void apply() override {

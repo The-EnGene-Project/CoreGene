@@ -15,32 +15,33 @@ using TransformComponentPtr = std::shared_ptr<TransformComponent>;
 class TransformComponent : virtual public Component {
 private:
     transform::TransformPtr m_transform;
-
     
-
 protected:
-    // Key Change: Moved from the constructor to a protected virtual method.
-    // This allows derived classes like ICamera to define their own priority rules.
-    virtual unsigned int validatePriority(unsigned int p) const {
-        const unsigned int max_priority = static_cast<int>(ComponentPriority::CAMERA); // Standard transforms must be lower priority
-        if (p >= max_priority || p < 0) {
+    // The validation function now takes the bounds as arguments
+    unsigned int validatePriority(unsigned int p, unsigned int min_bound, unsigned int max_bound) const {
+        if (p < min_bound || p > max_bound) {
             throw std::invalid_argument(
-                "Invalid priority for TransformComponent: " + std::to_string(p) +
-                ". Priority must be between " + std::to_string(0) +
-                " and " + std::to_string(max_priority) + "."
+                "Priority " + std::to_string(p) + " is outside the valid bounds [" +
+                std::to_string(min_bound) + ", " + std::to_string(max_bound) + "]."
             );
         }
         return p;
     }
 
-    TransformComponent(transform::TransformPtr t) :
-    Component(ComponentPriority::TRANSFORM),
-    m_transform(t)
+    // The constructor now accepts the validation bounds
+    TransformComponent(transform::TransformPtr t, unsigned int priority, unsigned int min_bound, unsigned int max_bound) :
+        Component(validatePriority(priority, min_bound, max_bound)), // Use the new validation
+        m_transform(t)
     {}
 
-    TransformComponent(transform::TransformPtr t, unsigned int priority) :
-    Component(validatePriority(priority)),
-    m_transform(t)
+    // A default constructor for standard transforms
+    TransformComponent(transform::TransformPtr t) :
+        TransformComponent(
+            t,
+            static_cast<unsigned int>(ComponentPriority::TRANSFORM), // Default priority
+            0,                                                      // Default min bound
+            static_cast<unsigned int>(ComponentPriority::CAMERA)    // Default max bound
+        )
     {}
 
 public:

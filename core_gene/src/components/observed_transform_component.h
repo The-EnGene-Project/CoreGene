@@ -26,8 +26,13 @@ private:
     glm::mat4 m_world_transform_cache;
     bool m_is_dirty;
 
-    ObservedTransformComponent(transform::TransformPtr t) :
-        TransformComponent(t),
+    ObservedTransformComponent(
+        transform::TransformPtr t, 
+        unsigned int priority = ComponentPriority::TRANSFORM, 
+        unsigned int min_bound = 0, 
+        unsigned int max_bound = ComponentPriority::CAMERA
+    ) :
+        TransformComponent(t, priority, min_bound, max_bound),
         m_world_transform_cache(1.0f),
         m_is_dirty(true) // Start dirty to guarantee an initial update
     {
@@ -71,6 +76,30 @@ private:
         };
 
         m_owner->visit(propagate_dirty_flag, {}, true);
+    }
+
+    /**
+     * @brief A helper to calculate the combined local transform for a given node.
+     * It fetches all TransformComponents, sorts them by priority, and multiplies their
+     * matrices in the correct order.
+     * @param node The node to process.
+     * @return The combined local transform matrix for the node.
+     */
+    glm::mat4 calculateCombinedLocalTransform(const scene::SceneNode* node) {
+        if (!node) return glm::mat4(1.0f);
+
+        auto all_local_transforms = node->payload().getAll<TransformComponent>();
+        std::sort(all_local_transforms.begin(), all_local_transforms.end(),
+            [](const std::shared_ptr<TransformComponent>& a, const std::shared_ptr<TransformComponent>& b) {
+                return a->getPriority() < b->getPriority();
+            }
+        );
+
+        glm::mat4 combined_local_transform(1.0f);
+        for (auto it = all_local_transforms.rbegin(); it != all_local_transforms.rend(); ++it) {
+            combined_local_transform = (*it)->getTransform()->getMatrix() * combined_local_transform;
+        }
+        return combined_local_transform;
     }
 
 public:
@@ -131,8 +160,8 @@ public:
 
     /**
      * @brief [ON-DEMAND UPDATE] Calculates and returns the world transform immediately.
-     * This version correctly handles multiple TransformComponents (including inherited types)
-     * on a single node, combining them based on their priority.
+     * This version uses an iterative approach, walking up the scene graph hierarchy
+     * from this component's owner to the root, accumulating transformations at each level.
      * @return A const reference to the up-to-date world transform matrix.
      */
     const glm::mat4& getWorldTransform() {
@@ -140,42 +169,32 @@ public:
             return m_world_transform_cache;
         }
 
-        glm::mat4 parent_world_transform(1.0f);
-
-        // Recursively get the parent's world transform. Its getWorldTransform() will
-        // correctly perform this same logic for the parent node.
-        if (m_owner && m_owner->getParent()) {
-            if (auto parent_comp = m_owner->getParent()->payload().get<ObservedTransformComponent>()) {
-                parent_world_transform = parent_comp->getWorldTransform();
-            }
-        }
-
-        // --- NEW LOGIC: Calculate this node's combined local transform ---
-        if (m_owner) {
-            // 1. Get all components that inherit from TransformComponent. This is polymorphic and
-            // will correctly fetch both TransformComponent and ObservedTransformComponent instances.
-            auto all_local_transforms = m_owner->payload().getAll<TransformComponent>();
-
-            // 2. Sort them by priority (ascending).
-            std::sort(all_local_transforms.begin(), all_local_transforms.end(),
-                [](const std::shared_ptr<TransformComponent>& a, const std::shared_ptr<TransformComponent>& b) {
-                    return a->getPriority() < b->getPriority();
-                }
-            );
-
-            // 3. Combine them by left-multiplying in REVERSE priority order.
-            // This is equivalent to applying transformations on a stack: T * R * S * Vertex
-            glm::mat4 combined_local_transform(1.0f);
-            for (auto it = all_local_transforms.rbegin(); it != all_local_transforms.rend(); ++it) {
-                combined_local_transform = (*it)->getTransform()->getMatrix() * combined_local_transform;
-            }
-
-            // Calculate our new world transform.
-            m_world_transform_cache = parent_world_transform * combined_local_transform;
-        } else {
+        if (!m_owner) {
              // Fallback for a component with no owner: world transform is its local transform.
             m_world_transform_cache = getTransform()->getMatrix();
+            m_is_dirty = false;
+            notify();
+            return m_world_transform_cache;
         }
+
+        // Start with the combined local transform of the node this component is attached to.
+        glm::mat4 final_world_transform = calculateCombinedLocalTransform(m_owner);
+
+        // --- NEW LOGIC: Iteratively walk up the parent hierarchy ---
+        const scene::SceneNode* current_parent = m_owner->getParent();
+        while (current_parent) {
+            // Get the parent's combined local transform.
+            glm::mat4 parent_local_transform = calculateCombinedLocalTransform(current_parent);
+            
+            // Pre-multiply our result with the parent's transform.
+            final_world_transform = parent_local_transform * final_world_transform;
+            
+            // Move up to the next parent.
+            current_parent = current_parent->getParent();
+        }
+
+        // Cache the final result.
+        m_world_transform_cache = final_world_transform;
 
         m_is_dirty = false;
         notify();

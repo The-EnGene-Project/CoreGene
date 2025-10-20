@@ -68,7 +68,7 @@ private:
 
 public:
     // Método de fábrica (Factory Method) estático para criar instâncias.
-    // Exemplo de uso: auto my_uniform = shader::Uniform<float>::Make(...);
+    // Exemplo de uso: auto my_uniform = uniform::Uniform<float>::Make(...);
     static UniformInterfacePtr Make(const std::string& name, std::function<T()> provider) {
         return std::unique_ptr<Uniform<T>>(new Uniform<T>(name, std::move(provider)));
     }

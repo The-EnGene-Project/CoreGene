@@ -1,5 +1,5 @@
-#ifndef THREED_CAMERA_H
-#define THREED_CAMERA_H
+#ifndef CAMERA_3D_H
+#define CAMERA_3D_H
 #pragma once
 
 #include "camera.h"
@@ -17,13 +17,13 @@ struct CameraPosition {
 };
 
 /**
- * @class 3DCamera
+ * @class Camera3D
  * @brief An abstract intermediate class for cameras operating in 3D space.
  *
  * This class extends the base Camera by adding support for a world-space
  * position resource, which is useful for lighting calculations.
  */
-class 3DCamera : public Camera {
+class Camera3D : public Camera {
 protected:
     uniform::UBOPtr<CameraPosition> m_position_resource;
 
@@ -33,8 +33,8 @@ protected:
      * @param position_binding_point The binding point for the CameraPosition UBO.
      * @param priority The update priority for the camera's transform.
      */
-    explicit 3DCamera(GLuint matrices_binding_point, GLuint position_binding_point, 
-                      unsigned int priority = ComponentPriority::CAMERA)
+    explicit Camera3D(GLuint matrices_binding_point, GLuint position_binding_point, 
+                        unsigned int priority = ComponentPriority::CAMERA)
         : Camera(matrices_binding_point, priority)
     {
         // Automatically create and store the ON_DEMAND position resource.
@@ -49,7 +49,7 @@ protected:
     }
 
 public:
-    virtual ~3DCamera() = default;
+    virtual ~Camera3D() = default;
 
     /**
      * @brief Returns a function that provides the camera's world position.
@@ -63,6 +63,30 @@ public:
         };
     }
 
+    // --- NEW: Overridden Shader Binding Utilities ---
+    
+    /**
+     * @brief Binds both camera UBOs (matrices and position) to a specific shader.
+     * @param shader The shader to bind to.
+     */
+    void bindToShader(shader::ShaderPtr shader) const override {
+        if (shader) {
+            Camera::bindToShader(shader); // Call base class implementation
+            shader->addResourceBlockToBind("CameraPosition");
+        }
+    }
+
+    /**
+     * @brief Binds both camera UBOs to a collection of shaders.
+     * @param shaders A vector of shaders to bind to.
+     */
+    void bindToShaders(const std::vector<shader::ShaderPtr>& shaders) const {
+        for (const auto& shader : shaders) {
+            this->bindToShader(shader);
+        }
+    }
+
+
     // --- New Pure Virtual for Concrete 3D Cameras ---
     
     /**
@@ -74,4 +98,4 @@ public:
 
 } // namespace component
 
-#endif // THREED_CAMERA_H
+#endif // CAMERA_3D_H

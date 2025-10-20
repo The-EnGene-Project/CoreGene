@@ -2,6 +2,7 @@
 #define GLOBAL_RESOURCE_MANAGER_H
 #pragma once
 
+#include "gl_includes.h"
 #include "shader_resource.h"
 #include <vector>
 #include <unordered_map>

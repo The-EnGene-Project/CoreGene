@@ -12,11 +12,15 @@
 #include <unordered_map>
 #include <functional>
 #include <any>
+#include <variant>
 
 #include "gl_includes.h"
 #include "error.h"
 #include "uniforms/uniform.h"
+#include "uniforms/pending_uniform_command.h"
+#include "uniforms/global_resource_manager.h"
 #include "../exceptions/shader_exception.h"
+
 
 namespace shader {
 
@@ -30,12 +34,35 @@ using UniformProviderMap = std::unordered_map<std::string, std::any>;
 
 static const char* GLenumToString(GLenum type);
 
+/**
+ * @class Shader
+ * @brief Manages GLSL shader programs, including a 4-tier uniform system.
+ *
+ * Tier 1: Global Resources (UBOs) - Bound once at link time.
+ * Tier 2: Static Uniforms (Per-Use) - Applied when shader is activated.
+ * Tier 3: Dynamic Uniforms (Per-Draw) - Applied every draw call via ShaderStack.
+ * Tier 4: Immediate Uniforms (Manual) - Set directly via setUniform for one-off values.
+ */
 class Shader : public std::enable_shared_from_this<Shader> {
+    friend class ShaderStack; // ShaderStack needs to manage m_is_currently_active_in_GL
+
 private:
     unsigned int m_pid;
-    // Mapa para armazenar os uniformes configurados
-    std::unordered_map<std::string, uniform::UniformInterfacePtr> m_uniforms;
     mutable bool m_uniforms_validated = false;
+
+    // --- 4-Tier Uniform System ---
+    // Tier 1: Global Resources (UBOs) to bind at link time.
+    std::vector<std::string> m_resource_blocks_to_bind;
+
+    // Tier 2: Static uniforms, applied when the shader is made active.
+    std::unordered_map<std::string, uniform::UniformInterfacePtr> m_static_uniforms;
+
+    // Tier 3: Dynamic uniforms, applied per-draw.
+    std::unordered_map<std::string, uniform::UniformInterfacePtr> m_dynamic_uniforms;
+
+    // Tier 4: State and queue for immediate-mode uniforms.
+    bool m_is_currently_active_in_GL = false;
+    std::vector<uniform::PendingUniformCommand> m_pending_uniform_queue;
 
     /**
      * @brief Helper to check if a string is likely a file path.
@@ -98,6 +125,43 @@ private:
         return id;
     }
 
+    /**
+     * @brief [Tier 4] Sends all queued immediate-mode uniforms to OpenGL.
+     * This is called automatically when the shader is activated.
+     */
+    void flushPendingUniforms() {
+        if (m_pending_uniform_queue.empty()) {
+            return;
+        }
+        for (const auto& command : m_pending_uniform_queue) {
+            command.Execute();
+        }
+        m_pending_uniform_queue.clear();
+    }
+    
+    /**
+     * @brief [Tier 4] Internal helper to immediately set a uniform value.
+     * This is the fast-path for when the shader is already active.
+     */
+    template<typename T>
+    void _setUniform(GLint location, const T& value) {
+        if constexpr (std::is_same_v<T, int>) {
+            glUniform1i(location, value);
+        } else if constexpr (std::is_same_v<T, float>) {
+            glUniform1f(location, value);
+        } else if constexpr (std::is_same_v<T, glm::vec2>) {
+            glUniform2fv(location, 1, glm::value_ptr(value));
+        } else if constexpr (std::is_same_v<T, glm::vec3>) {
+            glUniform3fv(location, 1, glm::value_ptr(value));
+        } else if constexpr (std::is_same_v<T, glm::vec4>) {
+            glUniform4fv(location, 1, glm::value_ptr(value));
+        } else if constexpr (std::is_same_v<T, glm::mat3>) {
+            glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(value));
+        } else if constexpr (std::is_same_v<T, glm::mat4>) {
+            glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+        }
+    }
+
 
 protected:
     Shader() : m_pid(-1) {}
@@ -133,13 +197,19 @@ protected:
             if (uniform_name.rfind("gl_", 0) == 0) {
                 continue;
             }
+            
+            // Check against all configured uniform maps
+            bool is_configured = m_dynamic_uniforms.count(uniform_name) || m_static_uniforms.count(uniform_name);
 
-            // Check if the active uniform exists in our configured map
-            if (m_uniforms.find(uniform_name) == m_uniforms.end()) {
-                std::cerr << "Warning: Active uniform '" << uniform_name  
-                          << "' (type: " << GLenumToString(type) << ")"
-                          << "' is declared in the shader but not configured in the C++ code." 
-                          << std::endl;
+            if (!is_configured) {
+                // This is now a more general warning, as Tier 4 uniforms are not pre-configured.
+                // A more advanced system might track Tier 4 uniforms set by name to suppress this warning.
+                // For now, it serves as a useful diagnostic.
+                 std::cout << "Info: Active uniform '" << uniform_name  
+                           << "' (type: " << GLenumToString(type) << ")"
+                           << "' is in the shader but not configured as a static or dynamic uniform." 
+                           << " (This may be intentional for immediate-mode uniforms)."
+                           << std::endl;
             }
         }
         m_uniforms_validated = true;
@@ -150,7 +220,7 @@ public:
         return ShaderPtr(new Shader());
     }
 
-    // This factory function now works with both paths and source code.
+    // This factory function works with both paths and source code.
     // Creates, attaches, links and configures uniforms all at once.
     static ShaderPtr Make(
         const std::string& vertex_source,
@@ -164,27 +234,26 @@ public:
         shader->Link();
 
         for (const auto& [name, any_provider] : uniforms) {
-            // Verifica e configura cada tipo de uniforme suportado
             if (const auto* provider = std::any_cast<std::function<float()>>(&any_provider)) {
-                shader->configureUniform<float>(name, *provider);
+                shader->configureDynamicUniform<float>(name, *provider);
             } 
             else if (const auto* provider = std::any_cast<std::function<int()>>(&any_provider)) {
-                shader->configureUniform<int>(name, *provider);
+                shader->configureDynamicUniform<int>(name, *provider);
             }
             else if (const auto* provider = std::any_cast<std::function<glm::vec2()>>(&any_provider)) {
-                shader->configureUniform<glm::vec2>(name, *provider);
+                shader->configureDynamicUniform<glm::vec2>(name, *provider);
             }
             else if (const auto* provider = std::any_cast<std::function<glm::vec3()>>(&any_provider)) {
-                shader->configureUniform<glm::vec3>(name, *provider);
+                shader->configureDynamicUniform<glm::vec3>(name, *provider);
             }
             else if (const auto* provider = std::any_cast<std::function<glm::vec4()>>(&any_provider)) {
-                shader->configureUniform<glm::vec4>(name, *provider);
+                shader->configureDynamicUniform<glm::vec4>(name, *provider);
             }
             else if (const auto* provider = std::any_cast<std::function<glm::mat3()>>(&any_provider)) {
-                shader->configureUniform<glm::mat3>(name, *provider);
+                shader->configureDynamicUniform<glm::mat3>(name, *provider);
             }
             else if (const auto* provider = std::any_cast<std::function<glm::mat4()>>(&any_provider)) {
-                shader->configureUniform<glm::mat4>(name, *provider);
+                shader->configureDynamicUniform<glm::mat4>(name, *provider);
             }
             else {
                 std::cerr << "Warning: Uniform '" << name << "' has an unsupported type in Make function." << std::endl;
@@ -216,7 +285,7 @@ public:
             identifier = source_or_path;
             source_code = loadSourceFromFile(source_or_path);
         } else {
-            identifier = "Vertex Shader (from string)";
+            identifier = "Vertex Shader (from string)"; // TODO: BACALHAU make this not repeat for multiple string shaders
             source_code = source_or_path;
         }
 
@@ -237,7 +306,7 @@ public:
             identifier = source_or_path;
             source_code = loadSourceFromFile(source_or_path);
         } else {
-            identifier = "Fragment Shader (from string)";
+            identifier = "Fragment Shader (from string)"; // TODO: BACALHAU make this not repeat for multiple string shaders
             source_code = source_or_path;
         }
         
@@ -263,35 +332,81 @@ public:
             glGetProgramInfoLog(m_pid, len, 0, message.data());
             throw exception::ShaderException("Shader linking failed: " + std::string(message.data()));
         }
-    }
 
-    // Configura um uniforme dinâmico
-    template<typename T>
-    ShaderPtr configureUniform(const std::string& name, std::function<T()> value_provider) {
-        // 1. Cria o objeto Uniform.
-        auto uniform_obj = uniform::Uniform<T>::Make(name, std::move(value_provider));
-        
-        // 2. Pede ao objeto para encontrar sua própria localização neste shader.
-        uniform_obj->findLocation(m_pid);
-        
-        // 3. Armazena o uniforme configurado no mapa.
-        m_uniforms[name] = std::move(uniform_obj);
-
-        return shared_from_this();
-    }
-
-    // Aplica todos os uniformes configurados para este shader.
-    void applyUniforms() const {
-        for (const auto& pair : m_uniforms) {
-            pair.second->apply();
+        // Tier 1: Bind global resource blocks after a successful link.
+        for (const auto& block_name : m_resource_blocks_to_bind) {
+            uniform::manager().bindResourceToShader(shared_from_this(), block_name);
         }
     }
 
-    // Ativa o shader e aplica seus uniformes.
-    void UseProgram() const {
-        // É crucial usar o programa ANTES de enviar os valores dos uniformes.
+    // --- Tier 1: Global Resource Configuration ---
+    void addResourceBlockToBind(const std::string& block_name) {
+        m_resource_blocks_to_bind.push_back(block_name);
+    }
+
+    // --- Tier 2: Static Uniform Configuration & Application ---
+    template<typename T>
+    ShaderPtr configureStaticUniform(const std::string& name, std::function<T()> value_provider) {
+        // 1. Creates the Uniform object
+        auto uniform_obj = uniform::Uniform<T>::Make(name, std::move(value_provider));
+        // 2. Asks the object to find it's location in the shader
+        uniform_obj->findLocation(m_pid);
+        // 3. Stores the configured Uniform in the static uniform map
+        m_static_uniforms[name] = std::move(uniform_obj);
+        return shared_from_this();
+    }
+
+    void applyStaticUniforms() const {
+        for (const auto& [name, uniform_ptr] : m_static_uniforms) {
+            uniform_ptr->apply();
+        }
+    }
+
+    // --- Tier 3: Dynamic Uniform Configuration & Application ---
+    template<typename T>
+    ShaderPtr configureDynamicUniform(const std::string& name, std::function<T()> value_provider) {
+        // 1. Creates the Uniform object
+        auto uniform_obj = uniform::Uniform<T>::Make(name, std::move(value_provider));
+        // 2. Asks the object to find it's location in the shader
+        uniform_obj->findLocation(m_pid);
+        // 3. Stores the configured Uniform in the dynamic uniform map
+        m_dynamic_uniforms[name] = std::move(uniform_obj);
+        return shared_from_this();
+    }
+
+    void applyDynamicUniforms() const {
+        for (const auto& [name, uniform_ptr] : m_dynamic_uniforms) {
+            uniform_ptr->apply();
+        }
+    }
+    
+    // --- Tier 4: Immediate-Mode Uniforms ---
+    template<typename T>
+    void setUniform(const std::string& name, const T& value) {
+
+        if (m_is_currently_active_in_GL) {
+            GLint location = glGetUniformLocation(m_pid, name.c_str());
+            if (location == -1) {
+                // This is not necessarily an error, the uniform might be optimized out.
+                // For production, this might be silenced.
+                std::cerr << "Warning: Uniform '" << name << "' not found in shader." << std::endl;
+                return;
+            }
+            // Fast path: Shader is active, set uniform directly.
+            _setUniform(location, value);
+        } else {
+            // Slow path: Shader is inactive, queue the command.
+            m_pending_uniform_queue.emplace_back(uniform::PendingUniformCommand{location, value});
+        }
+    }
+
+    // --- Shader Activation ---
+    void UseProgram() {
         glUseProgram(m_pid);
+        m_is_currently_active_in_GL = true; // Set active flag
         validateUniforms();
+        applyStaticUniforms();  // Apply Tier 2 uniforms
+        flushPendingUniforms(); // Apply any queued Tier 4 uniforms
     }
 };
 
@@ -318,8 +433,8 @@ static const char* GLenumToString(GLenum type) {
     }
 }
 
-class ShaderStack { // singleton
-    // BACALHAU falta adaptar para ter o batching dos comandos de draw pelo shader
+class ShaderStack {
+    // TODO: BACALHAU still needs to be adapted for shader switch batching
 private:
     std::vector<ShaderPtr> stack;
     ShaderPtr last_used_shader;
@@ -344,15 +459,31 @@ public:
             std::cerr << "Warning: Attempt to pop the base shader from the shader stack." << std::endl;
         }
     }
+    
+    /**
+     * @brief Gets the currently active shader, managing state transitions.
+     * @return A shared pointer to the active shader.
+     */
     ShaderPtr top() {
         ShaderPtr current_shader = stack.back();
+
+        // State transition logic
         if (current_shader != last_used_shader) {
+            // Deactivate the previous shader if it exists
+            if (last_used_shader) {
+                last_used_shader->m_is_currently_active_in_GL = false;
+            }
+            // Activate the new shader (this also applies Tier 2 and Tier 4 uniforms)
             current_shader->UseProgram();
             last_used_shader = current_shader;
         }
-        current_shader->applyUniforms();
+
+        // Apply per-draw (Tier 3) uniforms
+        current_shader->applyDynamicUniforms();
+        
         return current_shader;
     }
+
     unsigned int topId() {
         return top()->GetShaderID();
     }
@@ -366,31 +497,6 @@ inline ShaderStackPtr stack() {
     return instance;
 }
 
-// static GLuint educationalMakeShader(GLenum shadertype, const std::string& filename) {
-
-//     GLuint id = glCreateShader(shadertype);
-
-//     // open the shader file
-//     std::ifstream fp;
-//     fp.open(filename); 
-
-//     // read the shader file content
-//     std::stringstream strStream;
-//     strStream << fp.rdbuf();
-
-//     // pass the source string to OpenGL
-//     std::string source = strStream.str();
-//     const char* csource = source.c_str();
-//     glShaderSource(id, 1, &csource, 0);
-
-//     // tell OpenGL to compile the shader
-//     GLint status;
-//     glCompileShader(id);
-//     glGetShaderiv(id, GL_COMPILE_STATUS, &status);
-
-//     return id;
-// }
-
 } // namespace shader
 
-#endif
+#endif // SHADER_H

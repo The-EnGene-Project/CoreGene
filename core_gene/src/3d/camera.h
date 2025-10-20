@@ -4,8 +4,10 @@
 
 #include "observed_transform_component.h"
 #include "../gl_base/uniforms/ubo.h"
+#include "../gl_base/shader.h" // Include for ShaderPtr
 #include <glm/glm.hpp>
 #include <functional>
+#include <vector>
 
 namespace component {
 
@@ -79,6 +81,28 @@ public:
                 this->getProjectionMatrix()
             };
         };
+    }
+
+    // --- NEW: Shader Binding Utilities ---
+
+    /**
+     * @brief Binds the camera's UBO resource block to a specific shader.
+     * @param shader The shader to bind to.
+     */
+    virtual void bindToShader(shader::ShaderPtr shader) const {
+        if (shader) {
+            shader->addResourceBlockToBind("CameraMatrices");
+        }
+    }
+
+    /**
+     * @brief Binds the camera's UBO resource block to a collection of shaders.
+     * @param shaders A vector of shaders to bind to.
+     */
+    virtual void bindToShaders(const std::vector<shader::ShaderPtr>& shaders) const {
+        for (const auto& shader : shaders) {
+            this->bindToShader(shader);
+        }
     }
 
     // --- Pure Virtual Interface for Concrete Cameras ---

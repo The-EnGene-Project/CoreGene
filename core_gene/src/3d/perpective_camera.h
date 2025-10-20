@@ -15,11 +15,11 @@ using PerspectiveCameraPtr = std::shared_ptr<PerspectiveCamera>;
  * @class PerspectiveCamera
  * @brief A concrete camera that provides a 3D perspective projection.
  *
- * This class inherits from 3DCamera and implements all remaining abstract
+ * This class inherits from Camera3D and implements all remaining abstract
  * methods to function as a complete camera. It also observes its own transform
  * to cache its view matrix and trigger updates for its position resource.
  */
-class PerspectiveCamera : public 3DCamera, public IObserver {
+class PerspectiveCamera : public Camera3D, public IObserver {
 private:
     // --- Members for Projection ---
     float m_fov_degrees;
@@ -37,7 +37,7 @@ protected:
         float fov_degrees, float near_plane, float far_plane) 
         :
         // Pass binding points up to the parent constructors to automate resource creation.
-        3DCamera(matrices_binding_point, position_binding_point),
+        Camera3D(matrices_binding_point, position_binding_point),
         m_fov_degrees(fov_degrees),
         m_near_plane(near_plane),
         m_far_plane(far_plane),

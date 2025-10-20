@@ -15,7 +15,7 @@
 
 #include "gl_includes.h"
 #include "error.h"
-#include "uniform.h"
+#include "uniforms/uniform.h"
 #include "../exceptions/shader_exception.h"
 
 namespace shader {
@@ -34,7 +34,7 @@ class Shader : public std::enable_shared_from_this<Shader> {
 private:
     unsigned int m_pid;
     // Mapa para armazenar os uniformes configurados
-    std::unordered_map<std::string, UniformInterfacePtr> m_uniforms;
+    std::unordered_map<std::string, uniform::UniformInterfacePtr> m_uniforms;
     mutable bool m_uniforms_validated = false;
 
     /**
@@ -269,7 +269,7 @@ public:
     template<typename T>
     ShaderPtr configureUniform(const std::string& name, std::function<T()> value_provider) {
         // 1. Cria o objeto Uniform.
-        auto uniform_obj = Uniform<T>::Make(name, std::move(value_provider));
+        auto uniform_obj = uniform::Uniform<T>::Make(name, std::move(value_provider));
         
         // 2. Pede ao objeto para encontrar sua própria localização neste shader.
         uniform_obj->findLocation(m_pid);

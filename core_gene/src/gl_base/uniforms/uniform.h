@@ -11,7 +11,7 @@
 #include <functional>
 #include <iostream>
 
-namespace shader {
+namespace uniform {
 
 // Forward declaration
 class UniformInterface;
@@ -128,7 +128,7 @@ inline void Uniform<glm::mat4>::apply() const {
     }
 }
 
-} // namespace shader
+} // namespace uniform
 
 #endif
 

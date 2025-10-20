@@ -10,8 +10,8 @@
 
 // Core engine headers
 #include "node.h"
-// #include "scene_node_builder.h"
 #include "../components/component_collection.h"
+#include "../3d/icamera.h"
 #include "../gl_base/transform.h"
 #include "../exceptions/node_not_found_exception.h"
 
@@ -32,7 +32,7 @@ private:
     SceneNodePtr root;
     std::unordered_map<std::string, SceneNodePtr> name_map;
     std::unordered_map<int, SceneNodePtr> node_map;
-    transform::TransformPtr view_transform;
+    component::ICameraPtr m_active_camera;
 
     SceneGraph() {
         root = SceneNode::Make("root");
@@ -42,9 +42,8 @@ private:
         name_map["root"] = root;
         node_map[root->getId()] = root;
 
-        // BACALHAU change to a Camera eventually
-        view_transform = transform::Transform::Make();
-        view_transform->orthographic(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f);
+        // Initialize the active camera to null.
+        m_active_camera = nullptr;
     }
 
     // The builder class for SceneNodes is a friend.
@@ -176,34 +175,102 @@ public:
             return nullptr;
         }
     }
+    // --- NEW --- Camera Management ---
+    /**
+     * @brief Sets the active camera by finding a node by name.
+     * If the node is not found or has no camera, the active camera is not changed.
+     */
+    void setActiveCamera(const std::string& node_name) {
+        SceneNodePtr node = getNodeByName(node_name);
+        if (!node) {
+            std::cerr << "Warning: Cannot set active camera. Node '" << node_name << "' not found." << std::endl;
+            return;
+        }
+        setActiveCamera(node); // Delegate to the node-based version
+    }
+
+    /**
+     * @brief Sets the active camera from a node that contains an ICamera component.
+     * If the node is null or has no camera, the active camera is not changed.
+     */
+    void setActiveCamera(SceneNodePtr camera_node) {
+        if (!camera_node) {
+            std::cerr << "Warning: Cannot set active camera from a null node." << std::endl;
+            return;
+        }
+        auto camera = camera_node->payload().get<component::ICamera>();
+        if (!camera) {
+            std::cerr << "Warning: Node '" << camera_node->getName() << "' has no ICamera component. Active camera unchanged." << std::endl;
+            return;
+        }
+        setActiveCamera(camera); // Delegate to the component-based version
+    }
+
+    /**
+     * @brief Sets the active camera directly from a camera component pointer.
+     * This is the primary setter. If the camera is null, the active camera is not changed.
+     */
+    void setActiveCamera(component::ICameraPtr camera) {
+        if (!camera) {
+            std::cerr << "Warning: Attempted to set a null camera pointer as active. Active camera unchanged." << std::endl;
+            return;
+        }
+        m_active_camera = camera;
+    }
+
+    component::ICameraPtr getActiveCamera() const {
+        return m_active_camera;
+    }
 
     /**
      * @brief Draws the entire scene by initiating a visit from the root.
-     * Each node will execute its own attached drawing actions.
+     * It uses the active camera to set up the view and projection matrices.
      */
-    void draw() {
-        transform::stack()->push(view_transform->getMatrix());
+    void draw(float aspect_ratio = 1.0f) {
+        if (!m_active_camera) {
+            std::cerr << "Warning: Drawing scene with no active camera." << std::endl;
+            // Optionally, draw with a default identity matrix
+            transform::stack()->push(glm::mat4(1.0f));
+            transform::stack()->push(glm::mat4(1.0f));
+        } else {
+            // --- NEW --- Set up matrices from the camera component directly
+            transform::stack()->push(m_active_camera->getProjectionMatrix(aspect_ratio));
+            transform::stack()->push(m_active_camera->getViewMatrix());
+        }
+
         if (root) {
             root->visit();
         }
-        transform::stack()->pop();
+
+        transform::stack()->pop(); // Pop View
+        transform::stack()->pop(); // Pop Projection
     }
 
     /**
      * @brief Draws a specific subtree by initiating a visit from the given node.
      */
-    void drawSubtree(SceneNodePtr node) {
-        transform::stack()->push(view_transform->getMatrix());
+    void drawSubtree(SceneNodePtr node, float aspect_ratio = 1.0f) {
+        if (!m_active_camera) {
+             std::cerr << "Warning: Drawing subtree with no active camera." << std::endl;
+             transform::stack()->push(glm::mat4(1.0f));
+             transform::stack()->push(glm::mat4(1.0f));
+        } else {
+            transform::stack()->push(m_active_camera->getProjectionMatrix(aspect_ratio));
+            transform::stack()->push(m_active_camera->getViewMatrix());
+        }
+
         if (node) {
             node->visit();
         }
-        transform::stack()->pop();
+
+        transform::stack()->pop(); // Pop View
+        transform::stack()->pop(); // Pop Projection
     }
 
-    void drawSubtree(const std::string& node_name) {
+    void drawSubtree(const std::string& node_name, float aspect_ratio = 1.0f) { // --- MODIFIED ---
         SceneNodePtr node = getNodeByName(node_name);
         if (node) {
-            drawSubtree(node);
+            drawSubtree(node, aspect_ratio);
         } else {
             std::cerr << "Node with name " << node_name << " not found!" << std::endl;
         }
@@ -216,10 +283,6 @@ public:
         node_map.clear();
         name_map["root"] = root;
         node_map[root->getId()] = root;
-    }
-
-    void setView(float left, float right, float bottom, float top, float near, float far) {
-        view_transform->orthographic(left, right, bottom, top, near, far);
     }
 };
 

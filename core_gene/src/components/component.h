@@ -12,9 +12,9 @@ namespace component {
 
 enum class ComponentPriority {
     TRANSFORM = 100,
-    CAMERA = 200,      // Example for later
-    SHADER = 300,
-    APPEARANCE = 400,
+    SHADER = 200,
+    APPEARANCE = 300,
+    CAMERA = 400,
     GEOMETRY = 500,    // Drawing should happen last
     CUSTOM_SCRIPT = 600
 };

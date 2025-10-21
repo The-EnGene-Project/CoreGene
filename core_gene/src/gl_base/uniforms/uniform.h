@@ -13,6 +13,23 @@
 
 namespace uniform {
 
+namespace detail {
+    /**
+     * @brief Helper trait to map C++ types to their corresponding GLenum.
+     */
+    template<typename T> struct GLTypeFor { static const GLenum value = GL_NONE; }; // Default
+    
+    // Specializations for supported types
+    template<> struct GLTypeFor<float>     { static const GLenum value = GL_FLOAT; };
+    template<> struct GLTypeFor<int>       { static const GLenum value = GL_INT; };
+    template<> struct GLTypeFor<glm::vec2> { static const GLenum value = GL_FLOAT_VEC2; };
+    template<> struct GLTypeFor<glm::vec3> { static const GLenum value = GL_FLOAT_VEC3; };
+    template<> struct GLTypeFor<glm::vec4> { static const GLenum value = GL_FLOAT_VEC4; };
+    template<> struct GLTypeFor<glm::mat3> { static const GLenum value = GL_FLOAT_MAT3; };
+    template<> struct GLTypeFor<glm::mat4> { static const GLenum value = GL_FLOAT_MAT4; };
+    // ... add any other types you support, like glm::ivec2, bool, etc.
+}
+
 // Forward declaration
 class UniformInterface;
 
@@ -24,6 +41,7 @@ class UniformInterface {
 protected:
     GLint m_location = -2;
     std::string m_name;
+    GLenum m_cpp_type = GL_NONE;
 
 public:
     virtual ~UniformInterface() = default;
@@ -50,6 +68,10 @@ public:
     const std::string& getName() const { 
         return m_name; 
     }
+
+    GLenum getCppType() const {
+        return m_cpp_type;
+    }
 };
 
 // Classe de template que implementa a interface para um tipo específico.
@@ -64,6 +86,7 @@ private:
         : value_provider(std::move(provider))
     {
         m_name = uniform_name;
+        m_cpp_type = detail::GLTypeFor<T>::value;
     }
 
 public:

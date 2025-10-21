@@ -3,6 +3,8 @@
 #pragma once
 
 #include <variant>
+#include <string>
+#include <iostream>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -23,17 +25,25 @@ using UniformData = std::variant<
  *
  * This struct is used by the Shader class to queue uniform updates that are
  * set while the shader is not active. The command is executed when the shader
- * is next activated.
+ * is next activated. The location is retrieved just-in-time when Execute() is called.
  */
 struct PendingUniformCommand {
-    GLint location;
+    std::string name;
     UniformData data;
 
     /**
      * @brief Executes the pending uniform command, sending the data to OpenGL.
+     * @param pid The OpenGL program ID to set the uniform on.
      */
-    void Execute() const {
-        std::visit([this](auto&& arg) {
+    void Execute(GLuint pid) const {
+        // [Suggestion 2] Get location just-in-time
+        GLint location = glGetUniformLocation(pid, name.c_str());
+        if (location == -1) {
+            std::cerr << "Warning: Queued uniform '" << name << "' not found in shader (at flush time)." << std::endl;
+            return;
+        }
+
+        std::visit([this, location](auto&& arg) {
             using T = std::decay_t<decltype(arg)>;
             if constexpr (std::is_same_v<T, int>) {
                 glUniform1i(location, arg);

@@ -48,6 +48,7 @@ class Shader : public std::enable_shared_from_this<Shader> {
 
 private:
     unsigned int m_pid;
+    bool m_is_dirty = true;
     mutable bool m_uniforms_validated = false;
 
     // --- 4-Tier Uniform System ---
@@ -134,7 +135,7 @@ private:
             return;
         }
         for (const auto& command : m_pending_uniform_queue) {
-            command.Execute();
+            command.Execute(m_pid);
         }
         m_pending_uniform_queue.clear();
     }
@@ -186,10 +187,10 @@ protected:
         GLchar name[bufSize]; 
         GLsizei length; 
         GLint size; 
-        GLenum type;
+        GLenum glsl_type;
 
         for (GLint i = 0; i < active_uniforms; ++i) {
-            glGetActiveUniform(m_pid, (GLuint)i, bufSize, &length, &size, &type, name);
+            glGetActiveUniform(m_pid, (GLuint)i, bufSize, &length, &size, &glsl_type;, name);
 
             std::string uniform_name(name, length);
 
@@ -199,14 +200,30 @@ protected:
             }
             
             // Check against all configured uniform maps
-            bool is_configured = m_dynamic_uniforms.count(uniform_name) || m_static_uniforms.count(uniform_name);
+            uniform::UniformInterfacePtr configured_uniform = nullptr;
+            if (m_static_uniforms.count(uniform_name)) {
+                configured_uniform = m_static_uniforms.at(uniform_name);
+            } else if (m_dynamic_uniforms.count(uniform_name)) {
+                configured_uniform = m_dynamic_uniforms.at(uniform_name);
+            }
 
-            if (!is_configured) {
-                // This is now a more general warning, as Tier 4 uniforms are not pre-configured.
-                // A more advanced system might track Tier 4 uniforms set by name to suppress this warning.
-                // For now, it serves as a useful diagnostic.
+            if (configured_uniform) {
+                // This uniform IS configured in C++.
+                // Your "Dead Uniform" check in `findLocation` already caught any with location == -1.
+                // Now, we just check for type mismatches.
+                GLenum cpp_type = configured_uniform->getCppType();
+
+                // Note: GL_NONE means our C++ type trait didn't recognize the type.
+                if (cpp_type != GL_NONE && cpp_type != glsl_type) {
+                    // TYPE MISMATCH!
+                    std::cerr << "Warning: Uniform type mismatch for '" << uniform_name << "'. "
+                            << "GLSL expects type [" << GLenumToString(glsl_type) << "] but "
+                            << "C++ is configured as [" << GLenumToString(cpp_type) << "]."
+                            << std::endl;
+                }
+            } else {
                  std::cout << "Info: Active uniform '" << uniform_name  
-                           << "' (type: " << GLenumToString(type) << ")"
+                           << "' (type: " << GLenumToString(glsl_type) << ")"
                            << "' is in the shader but not configured as a static or dynamic uniform." 
                            << " (This may be intentional for immediate-mode uniforms)."
                            << std::endl;
@@ -231,7 +248,7 @@ public:
         shader->initialize();
         shader->AttachVertexShader(vertex_source);
         shader->AttachFragmentShader(fragment_source);
-        shader->Link();
+        shader->Bake();
 
         for (const auto& [name, any_provider] : uniforms) {
             if (const auto* provider = std::any_cast<std::function<float()>>(&any_provider)) {
@@ -292,6 +309,7 @@ public:
         GLuint sid = compileShaderFromSource(GL_VERTEX_SHADER, source_code, identifier);
         glAttachShader(m_pid, sid);
         glDeleteShader(sid); // The shader object is no longer needed after attachment
+        m_is_dirty = true; // [Suggestion 1] Mark as dirty
     }
 
     /**
@@ -313,13 +331,21 @@ public:
         GLuint sid = compileShaderFromSource(GL_FRAGMENT_SHADER, source_code, identifier);
         glAttachShader(m_pid, sid);
         glDeleteShader(sid); // The shader object is no longer needed after attachment
+        m_is_dirty = true; // [Suggestion 1] Mark as dirty
     }
 
     /**
-     * @brief Links the shader program.
+     * @brief Internal "Just-in-Time" linking and configuration.
+     * This is the single authoritative source for linking and (re)configuring uniforms.
      * @throws exception::ShaderException on linking failure.
      */
-    void Link() {
+    void _Bake() {
+        // 1. Check if we're already baked
+        if (!m_is_dirty) {
+            return;
+        }
+
+        // 2. Link the program
         glLinkProgram(m_pid);
         Error::Check("link program");
 
@@ -333,15 +359,29 @@ public:
             throw exception::ShaderException("Shader linking failed: " + std::string(message.data()));
         }
 
-        // Tier 1: Bind global resource blocks after a successful link.
+        // 3. Bind Tier 1 (Global Resources)
         for (const auto& block_name : m_resource_blocks_to_bind) {
             uniform::manager().bindResourceToShader(shared_from_this(), block_name);
         }
+
+        // 4. CRITICAL: Re-find all Tier 2 & 3 uniform locations
+        // This fixes the stale location bug
+        for (auto& [name, uniform_ptr] : m_static_uniforms) {
+            uniform_ptr->findLocation(m_pid);
+        }
+        for (auto& [name, uniform_ptr] : m_dynamic_uniforms) {
+            uniform_ptr->findLocation(m_pid);
+        }
+
+        // 5. Mark as clean
+        m_is_dirty = false;
+        m_uniforms_validated = false; // Force re-validation on next use
     }
 
     // --- Tier 1: Global Resource Configuration ---
     void addResourceBlockToBind(const std::string& block_name) {
         m_resource_blocks_to_bind.push_back(block_name);
+        m_is_dirty = true;
     }
 
     // --- Tier 2: Static Uniform Configuration & Application ---
@@ -396,12 +436,15 @@ public:
             _setUniform(location, value);
         } else {
             // Slow path: Shader is inactive, queue the command.
-            m_pending_uniform_queue.emplace_back(uniform::PendingUniformCommand{location, value});
+            m_pending_uniform_queue.emplace_back(uniform::PendingUniformCommand{name, value});
         }
     }
 
     // --- Shader Activation ---
     void UseProgram() {
+        if (m_is_dirty) {
+            _Bake();
+        }
         glUseProgram(m_pid);
         m_is_currently_active_in_GL = true; // Set active flag
         validateUniforms();
@@ -473,7 +516,7 @@ public:
             if (last_used_shader) {
                 last_used_shader->m_is_currently_active_in_GL = false;
             }
-            // Activate the new shader (this also applies Tier 2 and Tier 4 uniforms)
+            // Activate the new shader (this also Bakes if dirty, and applies Tier 2 and Tier 4 uniforms)
             current_shader->UseProgram();
             last_used_shader = current_shader;
         }

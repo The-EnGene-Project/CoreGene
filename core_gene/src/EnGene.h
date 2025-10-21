@@ -8,6 +8,7 @@
 #include "gl_base/shader.h"
 #include "gl_base/transform.h"
 #include "core/EnGene_config.h"
+#include "core/scene.h"
 #include "exceptions/base_exception.h"
 
 #include <iostream>
@@ -65,7 +66,20 @@ public:
         m_base_shader->Link();
 
         if (config.base_vertex_shader_source == EnGeneConfig::DEFAULT_VERTEX_SHADER) {
-            m_base_shader->configureUniform<glm::mat4>("M", transform::current);
+            m_base_shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
+        }
+
+        // Get the scene's default camera (this also initializes the singleton)
+        auto active_cam = scene::graph()->getActiveCamera();
+
+        // Bind the camera's UBOs to the engine's base shader
+        if (active_cam) { // Good practice to check, though we expect it
+            active_cam->bindToShader(m_base_shader);
+
+            // Re-link the shader to activate the new UBO bindings
+            m_base_shader->Link();
+        } else {
+            std::cerr << "CRITICAL WARNING: SceneGraph failed to provide a default camera." << std::endl;
         }
 
         m_clear_color[0] = config.clearColor[0];
@@ -137,6 +151,7 @@ public:
             shader::stack()->push(m_base_shader);
             
             if (m_user_render_func) {
+                uniform::manager().applyPerFrame();
                 m_user_render_func(alpha);
             }
 

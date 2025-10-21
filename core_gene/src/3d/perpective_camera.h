@@ -89,6 +89,8 @@ public:
             target_position = eye_position + forward_vector;
         }
 
+        uniform::manager().applyShaderResource("CameraPosition");
+
         m_cached_view_matrix = glm::lookAt(eye_position, target_position, up_vector);
         m_is_view_matrix_dirty = false;
         return m_cached_view_matrix;
@@ -128,11 +130,6 @@ public:
     void onNotify(const ISubject* subject) override {
         // Mark the view matrix cache as dirty for the next render frame.
         m_is_view_matrix_dirty = true;
-
-        // Trigger the ON_DEMAND update for the position resource.
-        // The check for m_position_resource is implicit, as this method won't
-        // be called unless the object (and its members) have been constructed.
-        uniform::manager().applyShaderResource("CameraPosition");
     }
 
     // --- Getters and Setters ---

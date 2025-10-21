@@ -12,8 +12,10 @@
 #include "node.h"
 #include "../components/component_collection.h"
 #include "../3d/icamera.h"
+#include "../3d/orthographic_camera.h"
 #include "../gl_base/transform.h"
 #include "../exceptions/node_not_found_exception.h"
+
 
 namespace scene {
 
@@ -42,8 +44,12 @@ private:
         name_map["root"] = root;
         node_map[root->getId()] = root;
 
-        // Initialize the active camera to null.
-        m_active_camera = nullptr;
+        // --- Create and set a default Orthographic Camera ---
+        SceneNodePtr default_cam_node = this->addNode("_default_camera")
+                                              .with<component::OrthographicCamera>();
+
+        // The active camera is the component we just added to the new node.
+        m_active_camera = default_cam_node->payload().get<component::ICamera>();
     }
 
     // The builder class for SceneNodes is a friend.
@@ -227,44 +233,18 @@ public:
      * It uses the active camera to set up the view and projection matrices.
      */
     void draw(float aspect_ratio = 1.0f) {
-        if (!m_active_camera) {
-            std::cerr << "Warning: Drawing scene with no active camera." << std::endl;
-            // Optionally, draw with a default identity matrix
-            transform::stack()->push(glm::mat4(1.0f));
-            transform::stack()->push(glm::mat4(1.0f));
-        } else {
-            // --- NEW --- Set up matrices from the camera component directly
-            transform::stack()->push(m_active_camera->getProjectionMatrix(aspect_ratio));
-            transform::stack()->push(m_active_camera->getViewMatrix());
-        }
-
         if (root) {
             root->visit();
         }
-
-        transform::stack()->pop(); // Pop View
-        transform::stack()->pop(); // Pop Projection
     }
 
     /**
      * @brief Draws a specific subtree by initiating a visit from the given node.
      */
     void drawSubtree(SceneNodePtr node, float aspect_ratio = 1.0f) {
-        if (!m_active_camera) {
-             std::cerr << "Warning: Drawing subtree with no active camera." << std::endl;
-             transform::stack()->push(glm::mat4(1.0f));
-             transform::stack()->push(glm::mat4(1.0f));
-        } else {
-            transform::stack()->push(m_active_camera->getProjectionMatrix(aspect_ratio));
-            transform::stack()->push(m_active_camera->getViewMatrix());
-        }
-
         if (node) {
             node->visit();
         }
-
-        transform::stack()->pop(); // Pop View
-        transform::stack()->pop(); // Pop Projection
     }
 
     void drawSubtree(const std::string& node_name, float aspect_ratio = 1.0f) { // --- MODIFIED ---

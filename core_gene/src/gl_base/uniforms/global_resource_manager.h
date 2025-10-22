@@ -2,7 +2,8 @@
 #define GLOBAL_RESOURCE_MANAGER_H
 #pragma once
 
-#include "gl_includes.h"
+#include "../gl_includes.h"
+#include "../i_shader.h"
 #include "shader_resource.h"
 #include <vector>
 #include <unordered_map>
@@ -10,8 +11,6 @@
 #include <memory>
 #include <iostream> // For error/warning logging
 #include <algorithm> // For std::remove_if
-
-#include "../shader.h"
 
 namespace uniform {
 
@@ -151,9 +150,9 @@ public:
      * @param shader A shared pointer to the shader object.
      * @param resourceName The name of the registered resource to bind.
      */
-    void bindResourceToShader(ShaderPtr shader, const std::string& resourceName) {
-        if (shader) {
-            bindResourceToShader(shader->GetShaderID(), resourceName);
+    void bindResourceToShader(shader::IShaderPtr shader_obj, const std::string& resourceName) {
+        if (shader_obj) {
+            bindResourceToShader(shader_obj->GetShaderID(), resourceName);
         }
     }
 
@@ -162,11 +161,11 @@ public:
      * @brief Binds all registered resources to a given shader.
      * @param shader A shared pointer to the shader object.
      */
-    void bindAllResourcesToShader(ShaderPtr shader) {
+    void bindAllResourcesToShader(shader::IShaderPtr shader_obj) {
 
-        if (!shader) return;
+        if (!shader_obj) return;
 
-        GLuint shader_pid = shader->GetShaderID();
+        GLuint shader_pid = shader_obj->GetShaderID();
 
         for (const auto& pair : m_known_resources) {
 

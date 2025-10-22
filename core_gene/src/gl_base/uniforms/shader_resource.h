@@ -2,7 +2,7 @@
 #define SHADER_RESOURCE_H
 #pragma once
 
-#include "gl_includes.h"
+#include "../gl_includes.h"
 #include <memory>
 #include <string>
 

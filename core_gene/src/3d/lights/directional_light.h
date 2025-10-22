@@ -1,7 +1,13 @@
+#ifndef DIRECTIONAL_LIGHT_H
+#define DIRECTIONAL_LIGHT_H
 #pragma once
 #include "light.h"
+#include <memory>
 
 namespace light {
+
+class DirectionalLight;
+using DirectionalLightPtr = std::shared_ptr<DirectionalLight>;
 
 /**
  * @brief Parameters for creating a DirectionalLight.
@@ -85,3 +91,5 @@ public:
 using DirectionalLightPtr = std::shared_ptr<DirectionalLight>;
 
 } // namespace light
+
+#endif // DIRECTIONAL_LIGHT_H

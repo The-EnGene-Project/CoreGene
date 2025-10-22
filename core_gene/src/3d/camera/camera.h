@@ -2,9 +2,9 @@
 #define CAMERA_H
 #pragma once
 
-#include "observed_transform_component.h"
-#include "../gl_base/uniforms/ubo.h"
-#include "../gl_base/shader.h" // Include for ShaderPtr
+#include "../../components/observed_transform_component.h"
+#include "../../gl_base/uniforms/ubo.h"
+#include "../../gl_base/shader.h" // Include for ShaderPtr
 #include <glm/glm.hpp>
 #include <functional>
 #include <vector>
@@ -44,7 +44,7 @@ protected:
      * @param matrices_binding_point The binding point for the CameraMatrices UBO.
      * @param priority The update priority for the camera's transform.
      */
-    explicit Camera(GLuint matrices_binding_point, unsigned int priority = ComponentPriority::CAMERA)
+    explicit Camera(GLuint matrices_binding_point, unsigned int priority =  static_cast<unsigned int>(ComponentPriority::CAMERA))
         : ObservedTransformComponent(transform::Transform::Make(), priority, 
             static_cast<unsigned int>(ComponentPriority::CAMERA), 
             static_cast<unsigned int>(ComponentPriority::GEOMETRY)),

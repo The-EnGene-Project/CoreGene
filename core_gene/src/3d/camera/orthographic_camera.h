@@ -2,9 +2,9 @@
 #define ORTHOGRAPHIC_CAMERA_H
 #pragma once
 
-#include "camera_3d.h"
-#include "../utils/observer_interfaces.h" // For IObserver
-#include "../gl_base/uniforms/manager.h"   // For uniform::manager()
+#include "camera3d.h"
+#include "../../utils/observer_interface.h" // For IObserver
+#include "../../gl_base/uniforms/global_resource_manager.h"   // For uniform::manager()
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace component {
@@ -21,7 +21,7 @@ using OrthographicCameraPtr = std::shared_ptr<OrthographicCamera>;
  * UI elements, or isometric 3D views. It inherits from Camera3D to ensure it
  * can still provide its world position for effects that might require it.
  */
-class OrthographicCamera : public Camera3D, public IObserver {
+class OrthographicCamera : public Camera3D {
 protected:
     // --- Members for Projection ---
     float m_left, m_right, m_bottom, m_top;

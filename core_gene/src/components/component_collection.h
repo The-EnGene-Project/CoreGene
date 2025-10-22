@@ -11,8 +11,10 @@
 #include <stdexcept>
 #include "component.h"
 
-// Forward-declare SceneNode to break circular dependency
-namespace scene { class SceneNode; }
+namespace scene {
+    using SceneNode = node::Node<ComponentCollection>;
+    using SceneNodePtr = std::shared_ptr<SceneNode>;
+}
 
 class ComponentCollection {
 private:
@@ -44,7 +46,7 @@ public:
      * @param owner A pointer to the node that owns this collection.
      */
     template <typename T>
-    void addComponent(std::shared_ptr<T> new_component, scene::SceneNode* owner) {
+    void addComponent(std::shared_ptr<T> new_component, scene::SceneNodePtr owner) {
         if (!new_component) return;
 
         const std::string& name = new_component->getName();

@@ -4,7 +4,7 @@
 
 #include "struct_resource.h"
 // Include the manager header for registration in the Make function.
-#include "global_buffer_manager.h" 
+#include "global_resource_manager.h" 
 #include <string>
 
 namespace uniform {
@@ -53,7 +53,7 @@ public:
         auto ubo_ptr = UBOPtr<T>(new UBO<T>(std::move(name), mode, bindingPoint));
         
         // Automatically register with the central manager.
-        uniform::manager().registerBuffer(ubo_ptr);
+        uniform::manager().registerResource(ubo_ptr);
 
         return ubo_ptr;
     }

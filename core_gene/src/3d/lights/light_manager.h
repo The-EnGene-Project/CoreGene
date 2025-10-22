@@ -4,16 +4,24 @@
 
 #include "light_config.h"
 #include "light_data.h"
-#include "../components/light_component.h"
-#include "../3d/directional_light.h"
-#include "../3d/point_light.h"
-#include "../3d/spot_light.h"
-#include "../gl_base/uniforms/ubo.h"
-#include "../gl_base/uniforms/global_resource_manager.h"
+#include "../../components/light_component.h"
+#include "directional_light.h"
+#include "point_light.h"
+#include "spot_light.h"
+#include "../../gl_base/uniforms/ubo.h"
+#include "../../gl_base/uniforms/global_resource_manager.h"
 #include <vector>
 #include <algorithm>
 #include <iostream>
 #include <glm/glm.hpp>
+
+
+namespace component {
+
+class LightComponent;
+using LightComponentPtr = std::shared_ptr<LightComponent>;
+
+}
 
 namespace light {
 
@@ -46,7 +54,7 @@ private:
      * with the manager. Components are automatically added on construction and
      * removed on destruction.
      */
-    std::vector<component::LightComponent*> m_registered_lights;
+    std::vector<component::LightComponentPtr> m_registered_lights;
     
     /**
      * @brief Uniform Buffer Object for GPU light data.
@@ -110,7 +118,7 @@ public:
      * 
      * @note Duplicate registrations are automatically prevented.
      */
-    void registerLight(component::LightComponent* component) {
+    void registerLight(component::LightComponentPtr component) {
         if (!component) return;
         
         // Avoid duplicate registrations
@@ -128,7 +136,7 @@ public:
      * 
      * @param component Pointer to the LightComponent to unregister.
      */
-    void unregisterLight(component::LightComponent* component) {
+    void unregisterLight(component::LightComponentPtr component) {
         auto it = std::find(m_registered_lights.begin(), m_registered_lights.end(), component);
         if (it != m_registered_lights.end()) {
             m_registered_lights.erase(it);

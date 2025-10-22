@@ -3,7 +3,8 @@
 #pragma once
 
 #include "observed_transform_component.h"
-#include "../3d/light.h"
+#include "../3d/lights/light_manager.h"
+#include "../3d/lights/light.h"
 #include "../gl_base/transform.h"
 #include <memory>
 #include <stdexcept>
@@ -11,7 +12,7 @@
 // Forward declaration of light manager
 namespace light {
     template<size_t MAX_LIGHTS> class LightManagerImpl;
-    class LightManager;
+    using LightManager = LightManagerImpl<MAX_SCENE_LIGHTS>;
     LightManager& manager();
 }
 
@@ -39,7 +40,7 @@ using LightComponentPtr = std::shared_ptr<LightComponent>;
  * @see light::LightManager
  * @see ObservedTransformComponent
  */
-class LightComponent : public ObservedTransformComponent {
+class LightComponent : public ObservedTransformComponent, public std::enable_shared_from_this<LightComponent> {
 private:
     light::LightPtr m_light;
 
@@ -63,7 +64,7 @@ private:
             throw std::invalid_argument("LightComponent requires a valid light pointer");
         }
         // Register with the light manager
-        light::manager().registerLight(this);
+        light::manager().registerLight(this->shared_from_this());
     }
 
 public:
@@ -72,7 +73,7 @@ public:
      */
     ~LightComponent() {
         // Unregister from the light manager
-        light::manager().unregisterLight(this);
+        light::manager().unregisterLight(this->shared_from_this());
     }
 
     /**
@@ -169,8 +170,5 @@ public:
 };
 
 } // namespace component
-
-// Include light_manager.h after the class definition to avoid circular dependencies
-#include "../lights/light_manager.h"
 
 #endif // LIGHT_COMPONENT_H

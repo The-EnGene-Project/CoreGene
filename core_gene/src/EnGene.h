@@ -63,7 +63,7 @@ public:
         m_base_shader = shader::Shader::Make();
         m_base_shader->AttachVertexShader(config.base_vertex_shader_source);
         m_base_shader->AttachFragmentShader(config.base_fragment_shader_source);
-        m_base_shader->Link();
+        m_base_shader->Bake();
 
         if (config.base_vertex_shader_source == EnGeneConfig::DEFAULT_VERTEX_SHADER) {
             m_base_shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
@@ -76,8 +76,8 @@ public:
         if (active_cam) { // Good practice to check, though we expect it
             active_cam->bindToShader(m_base_shader);
 
-            // Re-link the shader to activate the new UBO bindings
-            m_base_shader->Link();
+            // Re-bake the shader to activate the new UBO bindings
+            m_base_shader->Bake();
         } else {
             std::cerr << "CRITICAL WARNING: SceneGraph failed to provide a default camera." << std::endl;
         }

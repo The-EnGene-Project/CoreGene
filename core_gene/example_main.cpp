@@ -7,6 +7,10 @@
 #include <gl_base/error.h>
 #include <gl_base/shader.h>
 #include <components/all.h>
+#include <lights/light_config.h>
+#include <lights/light_data.h>
+#include <lights/light_manager.h>
+#include <components/light_component.h>
 
 #include <string>
 
@@ -46,10 +50,52 @@ int main() {
     transform::TransformPtr sun_rotation;
     transform::TransformPtr earth_orbit;
     transform::TransformPtr earth_rotation;
+    
+    // Light transforms for animation
+    transform::TransformPtr directional_light_transform;
+    transform::TransformPtr point_light_transform;
+    transform::TransformPtr spot_light_transform;
 
     // --- on_initialize ---
     // This lambda now *only* focuses on building the scene graph.
     auto on_init = [&](engene::EnGene& app) {
+        
+        // --- NEW: Create lights using the new API ---
+        
+        // Create DirectionalLight with base_direction parameter
+        auto directional_light = light::DirectionalLight::Make({
+            .base_direction = glm::vec3(0.0f, -1.0f, 0.0f),
+            .ambient = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
+            .diffuse = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f),
+            .specular = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+        });
+        directional_light_transform = transform::Transform::Make();
+        
+        // Create PointLight with individual attenuation parameters
+        auto point_light = light::PointLight::Make({
+            .position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+            .constant = 1.0f,
+            .linear = 0.09f,
+            .quadratic = 0.032f,
+            .ambient = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+            .diffuse = glm::vec4(1.0f, 0.5f, 0.0f, 1.0f),  // Orange light
+            .specular = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+        });
+        point_light_transform = transform::Transform::Make()->translate(0.7f, 0.0f, 0.0f);
+        
+        // Create SpotLight with base_direction parameter
+        auto spot_light = light::SpotLight::Make({
+            .position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+            .constant = 1.0f,
+            .linear = 0.09f,
+            .quadratic = 0.032f,
+            .base_direction = glm::vec3(0.0f, -1.0f, 0.0f),
+            .cutoff_angle = glm::cos(glm::radians(12.5f)),
+            .ambient = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f),
+            .diffuse = glm::vec4(0.0f, 0.8f, 1.0f, 1.0f),  // Cyan light
+            .specular = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+        });
+        spot_light_transform = transform::Transform::Make()->translate(-0.7f, 0.5f, 0.0f);
         
         // --- OLD SHADER SETUP (REMOVED) ---
         // app.getBaseShader()->configureUniform<glm::mat4>("M", transform::current);
@@ -93,6 +139,9 @@ int main() {
         // 2. Tell the camera to bind its resources to our new shader.
         //    (This just queues the names "CameraMatrices" and "CameraPosition").
         camera->bindToShader(textured_shader);
+        
+        // 3. Bind the SceneLights UBO to the shader for lighting
+        uniform::manager().bindResourceToShader(textured_shader, "SceneLights");
 
 
         // 1. Build the Sun
@@ -114,6 +163,10 @@ int main() {
                     32,                  // segments
                     true                 // has gradient
                 )
+            )
+            .with<component::LightComponent>(
+                component::LightComponent::Make(point_light, point_light_transform),
+                "SunPointLight"
             );
 
         // 2. Build the Earth System
@@ -146,6 +199,32 @@ int main() {
             .with<component::TransformComponent>(
                 earth_rotation, 101 // Higher priority for local rotation
             );
+        
+        // 3. Add DirectionalLight node
+        // This light will provide general scene illumination
+        scene::graph()->addNode("DirectionalLight")
+            .with<component::LightComponent>(
+                component::LightComponent::Make(directional_light, directional_light_transform),
+                "MainDirectionalLight"
+            );
+        
+        // 4. Add SpotLight node with nested hierarchy to test transform inheritance
+        // This light will be positioned above and to the left
+        // We'll create a parent node that rotates, and the spotlight as a child
+        auto parent_transform = transform::Transform::Make();
+        auto parent_node = scene::graph()->addNode("SpotLightParent")
+            .with<component::TransformComponent>(parent_transform);
+        
+        // Add the spotlight as a child of the parent node
+        parent_node.addChild("SpotLight")
+            .with<component::LightComponent>(
+                component::LightComponent::Make(spot_light, spot_light_transform),
+                "MainSpotLight"
+            );
+        
+        // Store the parent transform so we can animate it
+        // This will demonstrate that the child light inherits the parent's transform
+        spot_light_transform = parent_transform;
     };
 
     // --- Simulation vs. Render Loop ---
@@ -164,6 +243,17 @@ int main() {
         if (earth_rotation) {
             earth_rotation->rotate(3.0f, 0, 0, -1);
         }
+        
+        // --- NEW: Animate the spotlight parent to test transform inheritance ---
+        // The spotlight is a child of this parent, so it should inherit the rotation
+        if (spot_light_transform) {
+            spot_light_transform->rotate(0.5f, 0, 0, 1); // Rotate the parent slowly
+        }
+        
+        // Animate the directional light direction
+        if (directional_light_transform) {
+            directional_light_transform->rotate(0.3f, 1, 0, 0); // Rotate around X axis
+        }
     };
 
     // --- on_render ---
@@ -172,6 +262,10 @@ int main() {
         // Clear the screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // --- NEW: Apply light manager before rendering ---
+        // This synchronizes all light data to the GPU
+        light::manager().apply();
+        
         // Draw the entire scene graph.
         scene::graph()->draw();
         

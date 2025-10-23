@@ -76,10 +76,12 @@ public:
      */
     virtual std::function<CameraMatrices()> getMatricesProvider() {
         return [this]() -> CameraMatrices {
-            return {
-                this->getViewMatrix(),
-                this->getProjectionMatrix()
-            };
+            glm::mat4 view = this->getViewMatrix();
+            glm::mat4 projection = this->getProjectionMatrix();
+            CameraMatrices matrices;
+            matrices.view = view;
+            matrices.projection = projection;
+            return matrices;
         };
     }
 

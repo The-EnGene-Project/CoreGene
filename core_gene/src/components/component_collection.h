@@ -73,15 +73,28 @@ public:
      */
     template <typename T>
     std::shared_ptr<T> get() const {
-        auto map_it = m_type_map.find(std::type_index(typeid(T)));
-        if (map_it != m_type_map.end()) {
-            for (const auto& comp : map_it->second) {
-                if (comp->getName().empty()) {
-                    return std::dynamic_pointer_cast<T>(comp);
+        // auto map_it = m_type_map.find(std::type_index(typeid(T)));
+        // if (map_it != m_type_map.end()) {
+        //     for (const auto& comp : map_it->second) {
+        //         if (comp->getName().empty()) {
+        //             return std::dynamic_pointer_cast<T>(comp);
+        //         }
+        //     }
+        // }
+        // return nullptr;
+
+        // We must iterate the main vector to check for inheritance.
+        for (const auto& base_ptr : m_components_vector) {
+            // Try to dynamically cast to the requested type T
+            if (auto derived_ptr = std::dynamic_pointer_cast<T>(base_ptr)) {
+                // Cast succeeded, so base_ptr *is* an instance of T or a subclass of T.
+                // Now check if it's unnamed.
+                if (derived_ptr->getName().empty()) {
+                    return derived_ptr;
                 }
             }
         }
-        return nullptr;
+        return nullptr; // Not found
     }
 
     /**
@@ -104,13 +117,20 @@ public:
     template <typename T>
     std::vector<std::shared_ptr<T>> getAll() const {
         std::vector<std::shared_ptr<T>> result;
-        auto map_it = m_type_map.find(std::type_index(typeid(T)));
-        if (map_it != m_type_map.end()) {
-            result.reserve(map_it->second.size());
-            for (const auto& base_ptr : map_it->second) {
-                if (auto derived_ptr = std::dynamic_pointer_cast<T>(base_ptr)) {
-                    result.push_back(derived_ptr);
-                }
+        // auto map_it = m_type_map.find(std::type_index(typeid(T)));
+        // if (map_it != m_type_map.end()) {
+        //     result.reserve(map_it->second.size());
+        //     for (const auto& base_ptr : map_it->second) {
+        //         if (auto derived_ptr = std::dynamic_pointer_cast<T>(base_ptr)) {
+        //             result.push_back(derived_ptr);
+        //         }
+        //     }
+        // }
+        for (const auto& base_ptr : m_components_vector) {
+            // Try to cast each component to T
+            if (auto derived_ptr = std::dynamic_pointer_cast<T>(base_ptr)) {
+                // Cast succeeded, add it to the list
+                result.push_back(derived_ptr);
             }
         }
         return result;

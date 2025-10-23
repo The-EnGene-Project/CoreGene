@@ -86,12 +86,15 @@ public:
         if (!m_full_provider && !m_partial_provider) {
             return; // No provider set, nothing to do.
         }
-
+        GL_CHECK("apply struct resource pre bind buffer");
         glBindBuffer(m_buffer_type, m_buffer_id);
+        GL_CHECK("apply struct resource post bind buffer");
 
         if (m_full_provider) {
             T data = m_full_provider();
+            GL_CHECK("apply struct resource pre full update");
             glBufferSubData(m_buffer_type, 0, sizeof(T), &data);
+            GL_CHECK("apply struct resource post full update");
         } else if (m_partial_provider) {
             // Use a stack-allocated buffer for efficiency if small, else heap.
             std::vector<char> temp_buffer(sizeof(T));

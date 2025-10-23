@@ -354,7 +354,7 @@ public:
 
         // 2. Link the program
         glLinkProgram(m_pid);
-        Error::Check("link program");
+        GL_CHECK("link program");
 
         GLint status;
         glGetProgramiv(m_pid, GL_LINK_STATUS, &status);

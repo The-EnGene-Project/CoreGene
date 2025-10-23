@@ -7,6 +7,7 @@
 #include "gl_base/input_handler.h"
 #include "gl_base/shader.h"
 #include "gl_base/transform.h"
+#include "gl_base/error.h"
 #include "core/EnGene_config.h"
 #include "core/scene.h"
 #include "exceptions/base_exception.h"
@@ -63,6 +64,7 @@ public:
         m_base_shader = shader::Shader::Make();
         m_base_shader->AttachVertexShader(config.base_vertex_shader_source);
         m_base_shader->AttachFragmentShader(config.base_fragment_shader_source);
+        GL_CHECK("EnGene::shader attach");
         m_base_shader->Bake();
 
         if (config.base_vertex_shader_source == EnGeneConfig::DEFAULT_VERTEX_SHADER) {
@@ -189,9 +191,10 @@ private:
         }
 
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
         m_window = glfwCreateWindow(m_width, m_height, m_title.c_str(), nullptr, nullptr);
         if (!m_window) {
@@ -203,6 +206,10 @@ private:
         if (!gladLoadGL(glfwGetProcAddress)) {
             throw std::runtime_error("Failed to initialize GLAD OpenGL context");
         }
+
+        // Error::EnableDebugCallback() will check if the debug context
+        // was successfully created before enabling.
+        Error::EnableDebugCallback();
 
         // Apply the user-provided input handler
         m_input_handler->applyCallbacks(m_window);

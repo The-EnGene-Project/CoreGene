@@ -65,6 +65,11 @@ private:
 
         // The active camera is the component we just added to the new node.
         m_active_camera = default_cam_node->payload().get<component::Camera>();
+
+        if (!m_active_camera) {
+            // This else block handles the case where ComponentCollection::get returns nullptr
+            std::cerr << "CRITICAL ERROR: Failed to find default camera component." << std::endl;
+        }
     }
 
     // The builder class for SceneNodes is a friend.

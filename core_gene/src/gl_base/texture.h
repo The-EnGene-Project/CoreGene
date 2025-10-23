@@ -34,14 +34,14 @@ using TextureStackPtr = std::shared_ptr<TextureStack>;
 // This parallels the MakeShader function in shader.h.
 static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int& width, int& height) {
     glBindTexture(GL_TEXTURE_2D, tid);
-    Error::Check("bind texture for configuration");
+    GL_CHECK("bind texture for configuration");
 
     // Set texture wrapping and filtering options
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    Error::Check("set texture parameters");
+    GL_CHECK("set texture parameters");
 
     // Load image data using stb_image
     int channels;
@@ -66,9 +66,9 @@ static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int
 
     // Upload texture data to the GPU
     glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-    Error::Check("upload texture data");
+    GL_CHECK("upload texture data");
     glGenerateMipmap(GL_TEXTURE_2D);
-    Error::Check("generate mipmaps");
+    GL_CHECK("generate mipmaps");
 
     // Free the image data from CPU memory
     stbi_image_free(data);
@@ -87,7 +87,7 @@ protected:
     // Constructor acquires the OpenGL resource.
     Texture(const std::string& filename) : m_width(0), m_height(0) {
         glGenTextures(1, &m_tid);
-        Error::Check("generate texture");
+        GL_CHECK("generate texture");
 
         if (m_tid == 0) {
             std::cerr << "Could not create texture object" << std::endl;

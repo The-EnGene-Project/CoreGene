@@ -269,7 +269,7 @@ int main() {
         // Draw the entire scene graph.
         scene::graph()->draw();
         
-        Error::Check("render");
+        GL_CHECK("render");
     };
 
     try {

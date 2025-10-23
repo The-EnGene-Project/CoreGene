@@ -4,6 +4,7 @@
 
 #include "../gl_includes.h"
 #include "../i_shader.h"
+#include "../error.h"
 #include "shader_resource.h"
 #include <vector>
 #include <unordered_map>
@@ -104,9 +105,11 @@ public:
      * @brief Applies all registered PER_FRAME resources. Called once per frame.
      */
     void applyPerFrame() {
+        GL_CHECK("apply shader resource per frame");
         for (const auto& resource : m_per_frame_resources) {
             resource->apply();
         }
+        GL_CHECK("apply shader resource after per frame");
     }
 
     /**
@@ -114,12 +117,14 @@ public:
      * @param resourceName The name of the resource to apply.
      */
     void applyShaderResource(const std::string& resourceName) {
+        GL_CHECK("apply shader resource");
         auto it = m_known_resources.find(resourceName);
         if (it != m_known_resources.end()) {
             it->second->apply();
         } else {
             std::cerr << "Warning: Attempted to apply non-existent resource '" << resourceName << "'." << std::endl;
         }
+        GL_CHECK("after applying shader resources");
     }
 
     /**

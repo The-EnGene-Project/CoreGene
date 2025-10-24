@@ -13,7 +13,7 @@ using CubePtr = std::shared_ptr<Cube>;
 class Cube : public geometry::Geometry {
 protected:
     Cube(float* vertices, unsigned int* indices, int nverts, int nindices)
-        : geometry::Geometry(vertices, indices, nverts, nindices, 3, {3,3,3,2})
+        : geometry::Geometry(vertices, indices, nverts, nindices, 3, {3,3,2})
     {}
 
     // Gera vértices: posição, normal, tangente, uv

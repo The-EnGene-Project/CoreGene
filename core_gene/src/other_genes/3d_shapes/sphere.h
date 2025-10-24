@@ -25,7 +25,7 @@ class Sphere : public geometry::Geometry {
 protected:
     // Construtor protegido recebe diretamente os arrays já gerados
     Sphere(float* vertices, unsigned int* indices, int nverts, int nindices)
-        : geometry::Geometry(vertices, indices, nverts, nindices, 3, {3,3,3,2})
+        : geometry::Geometry(vertices, indices, nverts, nindices, 3, {3,3,2})
     {}
 
     // Funções de geração de malha

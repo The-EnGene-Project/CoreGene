@@ -39,9 +39,9 @@ protected:
      */
     explicit OrthographicCamera(GLuint matrices_binding_point, GLuint position_binding_point)
         : Camera3D(matrices_binding_point, position_binding_point),
-          m_left(-10.0f), m_right(10.0f), 
-          m_bottom(-10.0f), m_top(10.0f),
-          m_near_plane(0.1f), m_far_plane(100.0f),
+          m_left(-1.0f), m_right(1.0f), 
+          m_bottom(-1.0f), m_top(1.0f),
+          m_near_plane(-1.0f), m_far_plane(1.0f),
           m_target(nullptr),
           m_cached_view_matrix(1.0f),
           m_is_view_matrix_dirty(true)
@@ -119,7 +119,7 @@ public:
             target_position = eye_position + forward_vector;
         }
 
-        uniform::manager().applyShaderResource("CameraPosition");
+        // uniform::manager().applyShaderResource("CameraPosition");
 
         m_cached_view_matrix = glm::lookAt(eye_position, target_position, up_vector);
         m_is_view_matrix_dirty = false;

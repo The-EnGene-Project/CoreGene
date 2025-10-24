@@ -89,7 +89,7 @@ public:
             target_position = eye_position + forward_vector;
         }
 
-        uniform::manager().applyShaderResource("CameraPosition");
+        // uniform::manager().applyShaderResource("CameraPosition");
 
         m_cached_view_matrix = glm::lookAt(eye_position, target_position, up_vector);
         m_is_view_matrix_dirty = false;

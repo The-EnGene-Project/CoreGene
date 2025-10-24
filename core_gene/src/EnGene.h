@@ -66,6 +66,7 @@ public:
         m_base_shader->AttachFragmentShader(config.base_fragment_shader_source);
         GL_CHECK("EnGene::shader attach");
         m_base_shader->Bake();
+        GL_CHECK("EnGene::shader bake");
 
         if (config.base_vertex_shader_source == EnGeneConfig::DEFAULT_VERTEX_SHADER) {
             m_base_shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
@@ -91,6 +92,7 @@ public:
 
         glClearColor(m_clear_color[0], m_clear_color[1], m_clear_color[2], m_clear_color[3]);
         glEnable(GL_DEPTH_TEST);
+        GL_CHECK("EnGene::end of constructor");
     }
 
     ~EnGene() {

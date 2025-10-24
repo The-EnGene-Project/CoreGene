@@ -8,9 +8,81 @@
 #include <iomanip> // Required for std::hex
 #include <sstream>
 
-#include <stacktrace>
-
 #include "gl_includes.h"
+
+#include <iostream>
+#include <iomanip>
+#include <cstdint> // For uint64_t
+#include <backtrace.h> // The libbacktrace header
+
+// Data to pass to our callback
+struct BacktraceState {
+    int error;
+    int frame_num;
+};
+
+// Callback for backtrace_full
+// This is called for every frame
+static int backtrace_callback(void* data, uintptr_t pc,
+                              const char* filename, int lineno, const char* function) {
+    BacktraceState* state = (BacktraceState*)data;
+    
+    std::cerr << std::setw(2) << state->frame_num << ": ";
+
+    if (function) {
+        std::cerr << function;
+    } else {
+        std::cerr << "(No Symbol)";
+    }
+
+    std::cerr << " at 0x" << std::hex << (uint64_t)pc << std::dec;
+    
+    if (filename) {
+        std::cerr << " (" << filename << ":" << lineno << ")";
+    }
+    
+    std::cerr << "\n";
+    
+    state->frame_num++;
+    return 0; // 0 = continue to next frame
+}
+
+// Callback for error handling
+static void my_backtrace_error_callback(void* data, const char* msg, int errnum) {
+    BacktraceState* state = (BacktraceState*)data;
+    std::cerr << "libbacktrace error: " << msg << " (" << errnum << ")\n";
+    state->error = 1;
+}
+
+static void print_stacktrace() {
+    BacktraceState state = {0, 0};
+    
+    // 1. Initialize the backtrace state
+    //    The first argument is your executable's path. 
+    //    NULL works if the executable is in the current dir or PATH.
+    //    For robustness, you might want to pass argv[0] here.
+    struct backtrace_state* bt_state = backtrace_create_state(
+        NULL, // Pass your executable's path for best results (e.g., argv[0])
+        1,    // Threaded? (1 = yes)
+        my_backtrace_error_callback,
+        &state  // Data for error callback
+    );
+    
+    if (!bt_state) {
+        std::cerr << "Failed to create backtrace state.\n";
+        return;
+    }
+
+    std::cerr << "\n--- Stack Trace (libbacktrace) ---\n";
+
+    // 2. Do the full backtrace
+    //    0 = skip 0 frames from the top (change to 1 to skip this function)
+    backtrace_full(bt_state, 0, backtrace_callback, my_backtrace_error_callback, &state);
+
+    std::cerr << "------------------------------------" << std::endl;
+    
+    // backtrace_create_state returns NULL on error, no need to free
+}
 
 class Error {
 public:
@@ -71,7 +143,7 @@ public:
         }
         
         if (hasError) {
-            std::cerr << "Stack Trace:\n" << stacktrace::to_string(stacktrace::stacktrace()) << std::endl;
+            print_stacktrace();
             exit(1); // Abort
         }
     }
@@ -154,7 +226,8 @@ private:
         // If the severity is high, treat it as a fatal error
         if (severity == GL_DEBUG_SEVERITY_HIGH) {
             std::cerr << "ABORTING due to high-severity OpenGL error." << std::endl;
-            // exit(1);
+            print_stacktrace();
+            exit(1);
         }
     }
 };

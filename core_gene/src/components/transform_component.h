@@ -12,7 +12,7 @@ namespace component {
 class TransformComponent;
 using TransformComponentPtr = std::shared_ptr<TransformComponent>;
 
-class TransformComponent : virtual public Component {
+class TransformComponent : public Component {
 private:
     transform::TransformPtr m_transform;
     
@@ -51,7 +51,7 @@ public:
     }
 
     static TransformComponentPtr Make(transform::TransformPtr t, unsigned int priority) {
-        return TransformComponentPtr(new TransformComponent(t, priority));
+        return TransformComponentPtr(new TransformComponent(t, priority, 0, static_cast<unsigned int>(ComponentPriority::CAMERA)));
     }
 
     static TransformComponentPtr Make(transform::TransformPtr t, const std::string& name) {
@@ -61,7 +61,7 @@ public:
     }
 
     static TransformComponentPtr Make(transform::TransformPtr t, unsigned int priority, const std::string& name) {
-        auto comp = TransformComponentPtr(new TransformComponent(t, priority));
+        auto comp = TransformComponentPtr(new TransformComponent(t, priority, 0, static_cast<unsigned int>(ComponentPriority::CAMERA)));
         comp->setName(name);
         return comp;
     }

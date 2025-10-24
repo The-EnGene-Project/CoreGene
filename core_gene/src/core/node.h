@@ -78,7 +78,7 @@ public:
     const std::string& getName() const { return name; }
     NodePtr getParent() const { return parent.lock(); }
     bool getApplicability() const { return applicability; }
-    std::vector<NodePtr> getChildren const { return children; }
+    std::vector<NodePtr> getChildren() const { return children; }
 
     // --- Core Setters ---
     void setName(const std::string& new_name) { name = new_name; }
@@ -253,8 +253,8 @@ public:
      * @param ignore_applicability If true, traversal proceeds regardless of the node's
      * 'applicability' flag. Defaults to false.
      */
-    void visit(const std::function<void(Node&)>& pre_visit_lambda = {},
-               const std::function<void(Node&)>& post_visit_lambda = {},
+    void visit(const std::function<void(NodePtr)>& pre_visit_lambda,
+               const std::function<void(NodePtr)>& post_visit_lambda = {},
                bool ignore_applicability = false) {
         
         // Return early if we are respecting applicability and it's false
@@ -262,7 +262,7 @@ public:
 
         // 1. Execute the provided pre-order lambda if it's valid (not empty)
         if (pre_visit_lambda) {
-            pre_visit_lambda(*this);
+            pre_visit_lambda(this->shared_from_this());
         }
 
         // 2. Recursively visit children, passing along the same lambdas and flag
@@ -274,7 +274,7 @@ public:
 
         // 3. Execute the provided post-order lambda if it's valid (not empty)
         if (post_visit_lambda) {
-            post_visit_lambda(*this);
+            post_visit_lambda(this->shared_from_this());
         }
     }
 };

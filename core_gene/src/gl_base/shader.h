@@ -15,6 +15,7 @@
 #include <variant>
 
 #include "gl_includes.h"
+#include "i_shader.h"
 #include "error.h"
 #include "uniforms/uniform.h"
 #include "uniforms/pending_uniform_command.h"
@@ -43,7 +44,7 @@ static const char* GLenumToString(GLenum type);
  * Tier 3: Dynamic Uniforms (Per-Draw) - Applied every draw call via ShaderStack.
  * Tier 4: Immediate Uniforms (Manual) - Set directly via setUniform for one-off values.
  */
-class Shader : public std::enable_shared_from_this<Shader> {
+class Shader : public IShader, public std::enable_shared_from_this<Shader> {
     friend class ShaderStack; // ShaderStack needs to manage m_is_currently_active_in_GL
 
 private:
@@ -190,7 +191,7 @@ protected:
         GLenum glsl_type;
 
         for (GLint i = 0; i < active_uniforms; ++i) {
-            glGetActiveUniform(m_pid, (GLuint)i, bufSize, &length, &size, &glsl_type;, name);
+            glGetActiveUniform(m_pid, (GLuint)i, bufSize, &length, &size, &glsl_type, name);
 
             std::string uniform_name(name, length);
 
@@ -200,11 +201,17 @@ protected:
             }
             
             // Check against all configured uniform maps
-            uniform::UniformInterfacePtr configured_uniform = nullptr;
-            if (m_static_uniforms.count(uniform_name)) {
-                configured_uniform = m_static_uniforms.at(uniform_name);
-            } else if (m_dynamic_uniforms.count(uniform_name)) {
-                configured_uniform = m_dynamic_uniforms.at(uniform_name);
+            uniform::UniformInterface* configured_uniform = nullptr;
+            // Try to find in static uniforms first
+            auto static_it = m_static_uniforms.find(uniform_name);
+            if (static_it != m_static_uniforms.end()) {
+                configured_uniform = static_it->second.get(); // Get the value (pointer)
+            } else {
+                // If not found, try to find in dynamic uniforms
+                auto dynamic_it = m_dynamic_uniforms.find(uniform_name);
+                if (dynamic_it != m_dynamic_uniforms.end()) {
+                    configured_uniform = dynamic_it->second.get(); // Get raw ptr from unique_ptr
+                }
             }
 
             if (configured_uniform) {
@@ -286,7 +293,7 @@ public:
         }
     }
 
-    unsigned int GetShaderID() const {
+    virtual GLuint GetShaderID() const override {
         return m_pid;
     }
 
@@ -339,7 +346,7 @@ public:
      * This is the single authoritative source for linking and (re)configuring uniforms.
      * @throws exception::ShaderException on linking failure.
      */
-    void _Bake() {
+    void Bake() {
         // 1. Check if we're already baked
         if (!m_is_dirty) {
             return;
@@ -347,7 +354,7 @@ public:
 
         // 2. Link the program
         glLinkProgram(m_pid);
-        Error::Check("link program");
+        GL_CHECK("link program");
 
         GLint status;
         glGetProgramiv(m_pid, GL_LINK_STATUS, &status);
@@ -361,7 +368,7 @@ public:
 
         // 3. Bind Tier 1 (Global Resources)
         for (const auto& block_name : m_resource_blocks_to_bind) {
-            uniform::manager().bindResourceToShader(shared_from_this(), block_name);
+            uniform::manager().bindResourceToShader(m_pid, block_name);
         }
 
         // 4. CRITICAL: Re-find all Tier 2 & 3 uniform locations
@@ -443,7 +450,7 @@ public:
     // --- Shader Activation ---
     void UseProgram() {
         if (m_is_dirty) {
-            _Bake();
+            Bake();
         }
         glUseProgram(m_pid);
         m_is_currently_active_in_GL = true; // Set active flag

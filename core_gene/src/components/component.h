@@ -4,13 +4,18 @@
 
 #include <memory>
 #include <string>
+#include "../core/node.h"
 
+class ComponentCollection;
 // Forward-declare SceneNode to avoid circular header includes.
-namespace scene { class SceneNode; }
+namespace scene { 
+using SceneNode = node::Node<ComponentCollection>;
+using SceneNodePtr = std::shared_ptr<SceneNode>;
+}
 
 namespace component {
 
-enum class ComponentPriority {
+enum class ComponentPriority : unsigned int {
     TRANSFORM = 100,
     SHADER = 200,
     APPEARANCE = 300,
@@ -30,7 +35,7 @@ private:
     inline static int next_id = 0;
 
 protected:
-    scene::SceneNode* m_owner;
+    scene::SceneNodePtr m_owner;
 
     explicit Component(unsigned int p, const std::string& name = "") 
         : priority(p), m_name(name), m_owner(nullptr) {
@@ -38,14 +43,16 @@ protected:
     }
 
     explicit Component(ComponentPriority p, const std::string& name = "") 
-        : priority(static_cast<int>(p)), m_name(name), m_owner(nullptr) {
+        : priority(static_cast< unsigned int>(p)), m_name(name), m_owner(nullptr) {
         id = next_id++;
     }
+
+    void setName(const std::string& new_name) { m_name = new_name; }
 
 public:
     virtual ~Component() = default;
 
-    void setOwner(scene::SceneNode* owner) {
+    void setOwner(scene::SceneNodePtr owner) {
         m_owner = owner;
     }
     
@@ -61,4 +68,7 @@ public:
 };
 
 }
+
+#include "component_collection.h"
+
 #endif

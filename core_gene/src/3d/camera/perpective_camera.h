@@ -2,8 +2,8 @@
 #define PERSPECTIVE_CAMERA_H
 #pragma once
 
-#include "3d_camera.h"
-#include "../utils/observer_interfaces.h" // Needed for IObserver
+#include "camera3d.h"
+#include "../../utils/observer_interface.h" // Needed for IObserver
 #include <glm/gtc/matrix_transform.hpp>  // For glm::perspective and glm::lookAt
 
 namespace component {
@@ -19,7 +19,7 @@ using PerspectiveCameraPtr = std::shared_ptr<PerspectiveCamera>;
  * methods to function as a complete camera. It also observes its own transform
  * to cache its view matrix and trigger updates for its position resource.
  */
-class PerspectiveCamera : public Camera3D, public IObserver {
+class PerspectiveCamera : public Camera3D {
 private:
     // --- Members for Projection ---
     float m_fov_degrees;
@@ -89,7 +89,7 @@ public:
             target_position = eye_position + forward_vector;
         }
 
-        uniform::manager().applyShaderResource("CameraPosition");
+        // uniform::manager().applyShaderResource("CameraPosition");
 
         m_cached_view_matrix = glm::lookAt(eye_position, target_position, up_vector);
         m_is_view_matrix_dirty = false;

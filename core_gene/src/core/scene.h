@@ -11,8 +11,8 @@
 // Core engine headers
 #include "node.h"
 #include "../components/component_collection.h"
-#include "../3d/icamera.h"
-#include "../3d/orthographic_camera.h"
+#include "../3d/camera/camera.h"
+#include "../3d/camera/orthographic_camera.h"
 #include "../gl_base/transform.h"
 #include "../exceptions/node_not_found_exception.h"
 
@@ -34,7 +34,7 @@ private:
     SceneNodePtr root;
     std::unordered_map<std::string, SceneNodePtr> name_map;
     std::unordered_map<int, SceneNodePtr> node_map;
-    component::ICameraPtr m_active_camera;
+    component::CameraPtr m_active_camera;
 
     SceneGraph() {
         root = SceneNode::Make("root");
@@ -45,11 +45,31 @@ private:
         node_map[root->getId()] = root;
 
         // --- Create and set a default Orthographic Camera ---
-        SceneNodePtr default_cam_node = this->addNode("_default_camera")
-                                              .with<component::OrthographicCamera>();
+        // 1. Create the node and add it to the graph using the internal method.
+        //    (This is what the builder's 'addNode' would have done).
+        SceneNodePtr default_cam_node = this->addNode("_default_camera", root);
+
+        // 2. Check for successful creation and add the component.
+        if (default_cam_node) {
+            // 3. Add the component directly.
+            //    (This is what the builder's '.with<>()' would have done).
+            default_cam_node->payload().addComponent(component::OrthographicCamera::Make(), default_cam_node);
+
+            // 4. Set the active camera from the new component.
+            m_active_camera = default_cam_node->payload().get<component::Camera>();
+        } else {
+            // This else block handles the case where addNode returns nullptr
+            std::cerr << "CRITICAL ERROR: Failed to create default camera node in SceneGraph constructor." << std::endl;
+            m_active_camera = nullptr; // Explicitly set to null
+        }
 
         // The active camera is the component we just added to the new node.
-        m_active_camera = default_cam_node->payload().get<component::ICamera>();
+        m_active_camera = default_cam_node->payload().get<component::Camera>();
+
+        if (!m_active_camera) {
+            // This else block handles the case where ComponentCollection::get returns nullptr
+            std::cerr << "CRITICAL ERROR: Failed to find default camera component." << std::endl;
+        }
     }
 
     // The builder class for SceneNodes is a friend.
@@ -196,7 +216,7 @@ public:
     }
 
     /**
-     * @brief Sets the active camera from a node that contains an ICamera component.
+     * @brief Sets the active camera from a node that contains an Camera component.
      * If the node is null or has no camera, the active camera is not changed.
      */
     void setActiveCamera(SceneNodePtr camera_node) {
@@ -204,9 +224,9 @@ public:
             std::cerr << "Warning: Cannot set active camera from a null node." << std::endl;
             return;
         }
-        auto camera = camera_node->payload().get<component::ICamera>();
+        auto camera = camera_node->payload().get<component::Camera>();
         if (!camera) {
-            std::cerr << "Warning: Node '" << camera_node->getName() << "' has no ICamera component. Active camera unchanged." << std::endl;
+            std::cerr << "Warning: Node '" << camera_node->getName() << "' has no Camera component. Active camera unchanged." << std::endl;
             return;
         }
         setActiveCamera(camera); // Delegate to the component-based version
@@ -216,7 +236,7 @@ public:
      * @brief Sets the active camera directly from a camera component pointer.
      * This is the primary setter. If the camera is null, the active camera is not changed.
      */
-    void setActiveCamera(component::ICameraPtr camera) {
+    void setActiveCamera(component::CameraPtr camera) {
         if (!camera) {
             std::cerr << "Warning: Attempted to set a null camera pointer as active. Active camera unchanged." << std::endl;
             return;
@@ -224,7 +244,7 @@ public:
         m_active_camera = camera;
     }
 
-    component::ICameraPtr getActiveCamera() const {
+    component::CameraPtr getActiveCamera() const {
         return m_active_camera;
     }
 

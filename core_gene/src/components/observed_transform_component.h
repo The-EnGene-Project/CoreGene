@@ -3,8 +3,7 @@
 #pragma once
 
 #include "transform_component.h"
-#include "../gl_base/observer_interfaces.h"
-#include "../core/node.h" // Include the full node definition for hierarchy traversal
+#include "../utils/observer_interface.h"
 
 namespace component {
 
@@ -22,20 +21,20 @@ using ObservedTransformComponentPtr = std::shared_ptr<ObservedTransformComponent
  * 3. An ISubject: To notify final listeners (like cameras) after its cache is updated.
  */
 class ObservedTransformComponent : public TransformComponent, public IObserver, public ISubject {
-private:
+protected:
     glm::mat4 m_world_transform_cache;
     bool m_is_dirty;
 
     ObservedTransformComponent(
         transform::TransformPtr t, 
-        unsigned int priority = ComponentPriority::TRANSFORM, 
+        unsigned int priority = static_cast<unsigned int>(ComponentPriority::TRANSFORM), 
         unsigned int min_bound = 0, 
-        unsigned int max_bound = ComponentPriority::CAMERA
+        unsigned int max_bound = static_cast<unsigned int>(ComponentPriority::CAMERA)
     ) :
         TransformComponent(t, priority, min_bound, max_bound),
-        m_world_transform_cache(1.0f),
-        m_is_dirty(true) // Start dirty to guarantee an initial update
+        m_world_transform_cache(1.0f)
     {
+        m_is_dirty = true; // Start dirty to guarantee an initial update
         // ** CRITICAL **: Subscribe to the raw transform object's notifications.
         getTransform()->addObserver(this);
     }
@@ -63,9 +62,9 @@ private:
         }
 
         // Define the action to perform on the owner and every descendant node.
-        auto propagate_dirty_flag = [](Node& node) {
+        auto propagate_dirty_flag = [](scene::SceneNodePtr node) {
             // Use getAll<> for robustness, in case a node has multiple components of this type.
-            auto components = node.payload().getAll<ObservedTransformComponent>();
+            auto components = node->payload().getAll<ObservedTransformComponent>();
             for (const auto& comp : components) {
                 if (comp) {
                     // The `if (m_is_dirty)` check at the top of this function will
@@ -85,7 +84,7 @@ private:
      * @param node The node to process.
      * @return The combined local transform matrix for the node.
      */
-    glm::mat4 calculateCombinedLocalTransform(const scene::SceneNode* node) {
+    glm::mat4 calculateCombinedLocalTransform(const scene::SceneNodePtr node) {
         if (!node) return glm::mat4(1.0f);
 
         auto all_local_transforms = node->payload().getAll<TransformComponent>();
@@ -181,7 +180,7 @@ public:
         glm::mat4 final_world_transform = calculateCombinedLocalTransform(m_owner);
 
         // --- NEW LOGIC: Iteratively walk up the parent hierarchy ---
-        const scene::SceneNode* current_parent = m_owner->getParent();
+        scene::SceneNodePtr current_parent = m_owner->getParent();
         while (current_parent) {
             // Get the parent's combined local transform.
             glm::mat4 parent_local_transform = calculateCombinedLocalTransform(current_parent);

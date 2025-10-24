@@ -40,7 +40,7 @@ public:
         if (node_) {
             auto component = T::Make(std::forward<Args>(args)...);
             // Pass the raw owner pointer to addComponent as required.
-            node_->payload().addComponent(component, node_.get());
+            node_->payload().addComponent(component, node_);
         }
         return *this;
     }
@@ -63,7 +63,7 @@ public:
         if (node_) {
             // Forward the arguments and the name to the component's factory function.
             auto component = T::Make(std::forward<Args>(args)..., name);
-            node_->payload().addComponent(component, node_.get());
+            node_->payload().addComponent(component, node_);
         }
         return *this;
     }

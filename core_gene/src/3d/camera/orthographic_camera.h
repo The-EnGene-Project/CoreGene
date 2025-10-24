@@ -2,9 +2,9 @@
 #define ORTHOGRAPHIC_CAMERA_H
 #pragma once
 
-#include "camera_3d.h"
-#include "../utils/observer_interfaces.h" // For IObserver
-#include "../gl_base/uniforms/manager.h"   // For uniform::manager()
+#include "camera3d.h"
+#include "../../utils/observer_interface.h" // For IObserver
+#include "../../gl_base/uniforms/global_resource_manager.h"   // For uniform::manager()
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace component {
@@ -21,7 +21,7 @@ using OrthographicCameraPtr = std::shared_ptr<OrthographicCamera>;
  * UI elements, or isometric 3D views. It inherits from Camera3D to ensure it
  * can still provide its world position for effects that might require it.
  */
-class OrthographicCamera : public Camera3D, public IObserver {
+class OrthographicCamera : public Camera3D {
 protected:
     // --- Members for Projection ---
     float m_left, m_right, m_bottom, m_top;
@@ -39,9 +39,9 @@ protected:
      */
     explicit OrthographicCamera(GLuint matrices_binding_point, GLuint position_binding_point)
         : Camera3D(matrices_binding_point, position_binding_point),
-          m_left(-10.0f), m_right(10.0f), 
-          m_bottom(-10.0f), m_top(10.0f),
-          m_near_plane(0.1f), m_far_plane(100.0f),
+          m_left(-1.0f), m_right(1.0f), 
+          m_bottom(-1.0f), m_top(1.0f),
+          m_near_plane(-1.0f), m_far_plane(1.0f),
           m_target(nullptr),
           m_cached_view_matrix(1.0f),
           m_is_view_matrix_dirty(true)
@@ -119,7 +119,7 @@ public:
             target_position = eye_position + forward_vector;
         }
 
-        uniform::manager().applyShaderResource("CameraPosition");
+        // uniform::manager().applyShaderResource("CameraPosition");
 
         m_cached_view_matrix = glm::lookAt(eye_position, target_position, up_vector);
         m_is_view_matrix_dirty = false;

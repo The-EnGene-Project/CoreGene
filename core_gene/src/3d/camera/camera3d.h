@@ -34,7 +34,7 @@ protected:
      * @param priority The update priority for the camera's transform.
      */
     explicit Camera3D(GLuint matrices_binding_point, GLuint position_binding_point, 
-                        unsigned int priority = ComponentPriority::CAMERA)
+                        unsigned int priority = static_cast<unsigned int>(ComponentPriority::CAMERA))
         : Camera(matrices_binding_point, priority)
     {
         // Automatically create and store the ON_DEMAND position resource.

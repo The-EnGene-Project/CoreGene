@@ -35,7 +35,6 @@ class UniformInterface;
 
 // Usando um alias de ponteiro para consistência com o resto do projeto
 using UniformInterfacePtr = std::unique_ptr<UniformInterface>;
-// using WeakUniformInterfacePtr = std::weak_ptr<UniformInterface>;
 
 // Interface abstrata para um Uniform.
 class UniformInterface {

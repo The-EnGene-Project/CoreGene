@@ -99,7 +99,7 @@ private:
     }
     
     // Friend declaration for singleton accessor
-    friend LightManagerImpl& manager();
+    friend LightManagerImpl<MAX_SCENE_LIGHTS>& manager();
 
 public:
     // Delete copy and move constructors/operators to enforce singleton
@@ -143,6 +143,35 @@ public:
             m_registered_lights.erase(it);
         }
     }
+
+    /**
+     * @brief Binds the managed light UBO to a specific shader program.
+     * * This method tells the uniform manager to associate the "SceneLights"
+     * uniform block in the given shader with the binding point managed
+     * by this light manager (which is 2, as set in the constructor).
+     *
+     * @param shader_pid The OpenGL program ID of the shader.
+     */
+    void bindToShader(GLuint shader_pid) {
+        if (!m_light_resource) {
+            std::cerr << "Error: LightManager cannot bind to shader. Light resource is null." << std::endl;
+            return;
+        }
+        
+        // Call the global uniform manager to perform the binding.
+        // The resource name (e.g., "SceneLights") is retrieved from the UBO object.
+        uniform::manager().bindResourceToShader(shader_pid, m_light_resource->getName());
+    }
+
+    /**
+     * @brief Binds the managed light UBO to a specific shader program (overload).
+     * * @param shader_obj A shared pointer to the shader object.
+     */
+    void bindToShader(shader::IShaderPtr shader_obj) {
+        if (shader_obj) {
+            bindToShader(shader_obj->GetShaderID());
+        }
+    }
     
     /**
      * @brief Updates light data and synchronizes it to the GPU.
@@ -171,7 +200,7 @@ public:
         
         // Process each registered component
         size_t light_index = 0;
-        for (auto* component : m_registered_lights) {
+        for (auto component : m_registered_lights) {
             if (light_index >= MAX_LIGHTS) {
                 std::cerr << "Warning: Scene has more lights than MAX_SCENE_LIGHTS (" 
                           << MAX_LIGHTS << "). Extra lights will be ignored." << std::endl;
@@ -191,14 +220,14 @@ public:
             data.type = static_cast<int>(light->getType());
             
             // Type-specific packing
-            if (auto* dir_light = dynamic_cast<DirectionalLight*>(light.get())) {
+            if (auto dir_light = dynamic_cast<DirectionalLight*>(light.get())) {
                 // Transform direction to world space (w=0 for directions)
                 glm::vec4 world_dir = world_transform * glm::vec4(dir_light->getBaseDirection(), 0.0f);
                 data.direction = glm::normalize(world_dir);
                 data.position = glm::vec4(0.0f);  // Unused for directional
                 data.attenuation = glm::vec4(0.0f);  // Unused for directional
             }
-            else if (auto* spot_light = dynamic_cast<SpotLight*>(light.get())) {
+            else if (auto spot_light = dynamic_cast<SpotLight*>(light.get())) {
                 // Transform position to world space
                 data.position = world_transform * spot_light->getPosition();
                 // Transform direction to world space and normalize
@@ -212,7 +241,7 @@ public:
                     spot_light->getCutoffAngle()
                 );
             }
-            else if (auto* point_light = dynamic_cast<PointLight*>(light.get())) {
+            else if (auto point_light = dynamic_cast<PointLight*>(light.get())) {
                 // Transform position to world space (w=1 for positions)
                 data.position = world_transform * point_light->getPosition();
                 // Pack constant, linear, quadratic into attenuation vec4

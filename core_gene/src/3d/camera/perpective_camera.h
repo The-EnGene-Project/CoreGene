@@ -129,6 +129,7 @@ public:
      */
     void onNotify(const ISubject* subject) override {
         // Mark the view matrix cache as dirty for the next render frame.
+        ObservedTransformComponent::onNotify(subject);
         m_is_view_matrix_dirty = true;
     }
 

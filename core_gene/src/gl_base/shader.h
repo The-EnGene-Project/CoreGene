@@ -366,13 +366,12 @@ public:
             throw exception::ShaderException("Shader linking failed: " + std::string(message.data()));
         }
 
-        // 3. Bind Tier 1 (Global Resources)
-        for (const auto& block_name : m_resource_blocks_to_bind) {
-            uniform::manager().bindResourceToShader(m_pid, block_name);
-        }
+        bindRegisteredShaderResources();
+        GL_CHECK("bind resources");
 
         // 4. CRITICAL: Re-find all Tier 2 & 3 uniform locations
         // This fixes the stale location bug
+        // TODO: BACALHAU needs to check if the shader is actually active before doing this
         for (auto& [name, uniform_ptr] : m_static_uniforms) {
             uniform_ptr->findLocation(m_pid);
         }
@@ -389,6 +388,13 @@ public:
     void addResourceBlockToBind(const std::string& block_name) {
         m_resource_blocks_to_bind.push_back(block_name);
         m_is_dirty = true;
+    }
+
+    void bindRegisteredShaderResources() {
+        // 3. Bind Tier 1 (Global Resources)
+        for (const auto& block_name : m_resource_blocks_to_bind) {
+            uniform::manager().bindResourceToShader(m_pid, block_name);
+        }
     }
 
     // --- Tier 2: Static Uniform Configuration & Application ---

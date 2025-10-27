@@ -59,7 +59,7 @@ private:
     /**
      * @brief Uniform Buffer Object for GPU light data.
      * 
-     * This UBO holds the SceneLights structure and is bound to binding point 0.
+     * This UBO holds the SceneLights structure and is bound to binding point 2.
      * It uses ON_DEMAND update mode, meaning it only uploads data when apply()
      * is explicitly called.
      */
@@ -87,10 +87,11 @@ private:
         m_scene_data.active_light_count = 0;
         
         // Create UBO with ON_DEMAND update mode
+        // TODO: BACALHAU binding point should be configurable
         m_light_resource = uniform::UBO<SceneLights<MAX_LIGHTS>>::Make(
             "SceneLights",
             uniform::UpdateMode::ON_DEMAND,
-            0  // Binding point 0
+            2  // Binding point 2
         );
         
         // Set the data provider lambda

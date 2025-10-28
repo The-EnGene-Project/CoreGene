@@ -64,6 +64,24 @@ public:
         );
     }
 
+    
+    /**
+     * @brief Static factory method using default binding points.
+     */
+    static PerspectiveCameraPtr Make(
+        float fov_degrees = 80.0f, float near_plane = 0.1f, float far_plane = 100.0f) 
+    {
+        return PerspectiveCameraPtr(
+            new PerspectiveCamera(
+                0,
+                1, // Default binding points
+                fov_degrees, 
+                near_plane, 
+                far_plane
+            )
+        );
+    }
+
     ~PerspectiveCamera() {
         setTarget(nullptr);
         this->removeObserver(this);

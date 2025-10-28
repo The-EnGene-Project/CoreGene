@@ -127,6 +127,12 @@ public:
      */
     virtual void setTarget(ObservedTransformComponentPtr target) = 0;
 
+    /**
+     * @brief Gets the current target that the camera is looking at.
+     * @return A shared pointer to the target component, or nullptr if no target is set.
+     */
+    virtual ObservedTransformComponentPtr getTarget() const = 0;
+
     // --- Type Information ---
     const char* getTypeName() const override { return "Camera"; }
     static const char* getTypeNameStatic() { return "Camera"; }

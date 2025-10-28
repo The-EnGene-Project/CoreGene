@@ -134,6 +134,10 @@ public:
         m_is_view_matrix_dirty = true;
     }
 
+    ObservedTransformComponentPtr getTarget() const override {
+        return m_target;
+    }
+
     glm::vec3 getWorldPosition() override {
         // getWorldTransform() calculates and caches the latest world matrix.
         // We can then extract the position from the final column.

@@ -131,6 +131,17 @@ public:
         target_handler.registerCallback<input::InputType::SCROLL>(
             input::InputHandler::ScrollCallback{});
     }
+
+    /**
+     * @brief Synchronizes the arcball controller's target with the current camera target.
+     * This should be called each frame before rendering to ensure the arcball
+     * controller is following the correct target component.
+     */
+    void syncWithCameraTarget() {
+        if (!m_controller) return;
+        
+        m_controller->syncWithCameraTarget();
+    }
     
     // --- Configuration Pass-through Methods ---
     

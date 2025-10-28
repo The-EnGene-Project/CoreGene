@@ -87,8 +87,8 @@ inline float clampPolarAngle(float phi) {
  */
 inline void mouseDeltaToSphericalDelta(double dx, double dy, float sensitivity, 
                                       float& theta, float& phi) {
-    theta -= dx * sensitivity;  // Horizontal movement affects azimuthal angle
-    phi += dy * sensitivity;    // Vertical movement affects polar angle
+    theta += dx * sensitivity;  // Horizontal movement affects azimuthal angle
+    phi -= dy * sensitivity;    // Vertical movement affects polar angle
     
     // Apply angle constraints
     phi = clampPolarAngle(phi);
@@ -383,6 +383,24 @@ public:
     }
     
     /**
+     * @brief Checks if the camera has a target set and uses it as the arcball center.
+     * This method should be called to synchronize the arcball target with the camera's target.
+     * @return True if the camera target was used, false if no camera target was found
+     */
+    bool syncWithCameraTarget() {
+        auto camera = scene::graph()->getActiveCamera();
+        if (!camera) return false;
+        
+        auto camera_target = camera->getTarget();
+        if (camera_target) {
+            // Use the camera's target as the arcball center
+            setTarget(camera_target);
+            return true;
+        }
+        return false;
+    }
+    
+    /**
      * @brief Gets the current camera distance from target.
      * @return Current radius value
      */
@@ -408,15 +426,20 @@ public:
         // Get camera's current world position
         glm::vec3 camera_position = camera->getWorldTransform()[3];
         
-        // If no target is set, calculate a reasonable target based on camera orientation
-        if (m_target == glm::vec3(0.0f) && !m_target_component) {
-            // Get camera's forward direction from its transform
+        // First, check if the camera has a target set and use it as the arcball center
+        auto camera_target = camera->getTarget();
+        if (camera_target) {
+            std::cout << "ArcBall: Using camera's existing target as arcball center" << std::endl;
+            setTarget(camera_target);
+        } else if (m_target == glm::vec3(0.0f) && !m_target_component) {
+            // If no camera target and no arcball target is set, calculate a reasonable target based on camera orientation
             const glm::mat4& camera_world_transform = camera->getWorldTransform();
             glm::vec3 forward = -glm::vec3(camera_world_transform[2]); // Camera looks down -Z
             
             // Set target at a reasonable distance in front of the camera
             float default_target_distance = 5.0f;
             m_target = camera_position + forward * default_target_distance;
+            std::cout << "ArcBall: No camera target found, using calculated target based on camera orientation" << std::endl;
         }
         
         // Calculate spherical coordinates from current camera position relative to target
@@ -491,17 +514,29 @@ private:
      * Ensures compatibility with both perspective and orthographic cameras.
      */
     void updateCameraPosition() {
-        // Update target from component if available
-        if (m_target_component) {
-            const glm::mat4& world_transform = m_target_component->getCachedWorldTransform();
-            m_target = glm::vec3(world_transform[3]);
-        }
-        
         // Get active camera from scene graph
         auto camera = scene::graph()->getActiveCamera();
         if (!camera) {
             std::cerr << "ArcBall: No active camera available" << std::endl;
             return;
+        }
+        
+        // Check if we should sync with the camera's target (if we don't have our own target component)
+        if (!m_target_component) {
+            auto camera_target = camera->getTarget();
+            if (camera_target) {
+                // If the camera has a target but we don't have a target component, sync with it
+                if (!m_target_component || m_target_component != camera_target) {
+                    setTarget(camera_target);
+                    return; // setTarget will call updateCameraPosition again
+                }
+            }
+        }
+        
+        // Update target from component if available
+        if (m_target_component) {
+            const glm::mat4& world_transform = m_target_component->getCachedWorldTransform();
+            m_target = glm::vec3(world_transform[3]);
         }
         
         // Calculate new camera position from spherical coordinates

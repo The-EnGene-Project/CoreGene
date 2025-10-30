@@ -146,31 +146,30 @@ public:
 
     /**
      * @brief Binds the managed light UBO to a specific shader program.
-     * * This method tells the uniform manager to associate the "SceneLights"
-     * uniform block in the given shader with the binding point managed
-     * by this light manager (which is 2, as set in the constructor).
-     *
-     * @param shader_pid The OpenGL program ID of the shader.
+     * 
+     * This method adds the "SceneLights" uniform block to the shader's resource
+     * binding list. The actual binding will occur when the shader is baked or
+     * when bindRegisteredShaderResources() is called.
+     * 
+     * This is consistent with how Camera's bindToShader works - it defers the
+     * actual binding rather than doing it immediately.
+     * 
+     * @param shader_obj A shared pointer to the shader object.
      */
-    void bindToShader(GLuint shader_pid) {
+    void bindToShader(shader::ShaderPtr shader_obj) {
+        if (!shader_obj) {
+            std::cerr << "Error: LightManager cannot bind to null shader." << std::endl;
+            return;
+        }
+        
         if (!m_light_resource) {
             std::cerr << "Error: LightManager cannot bind to shader. Light resource is null." << std::endl;
             return;
         }
         
-        // Call the global uniform manager to perform the binding.
-        // The resource name (e.g., "SceneLights") is retrieved from the UBO object.
-        uniform::manager().bindResourceToShader(shader_pid, m_light_resource->getName());
-    }
-
-    /**
-     * @brief Binds the managed light UBO to a specific shader program (overload).
-     * * @param shader_obj A shared pointer to the shader object.
-     */
-    void bindToShader(shader::IShaderPtr shader_obj) {
-        if (shader_obj) {
-            bindToShader(shader_obj->GetShaderID());
-        }
+        // Add the resource to the shader's binding list (deferred binding)
+        // This is consistent with how Camera::bindToShader works
+        shader_obj->addResourceBlockToBind(m_light_resource->getName());
     }
     
     /**

@@ -17,12 +17,12 @@ protected:
     {}
 
     // Gera vértices: posição, normal, tangente, uv
-    static float* generateVertexData(int& outVertexCount) {
+    static float* generateVertexData(float x_width, float y_height, float z_depth, int& outVertexCount) {
         outVertexCount = 24; // 4 vértices por face * 6 faces
         const int floatsPerVertex = 3 + 3 + 3 + 2;
         float* vertices = new float[outVertexCount * floatsPerVertex];
 
-        // Posições por face
+        // Posições por face (base dimensions before scaling)
         glm::vec3 positions[24] = {
             {-0.5f,0.0f,-0.5f},{-0.5f,1.0f,-0.5f},{0.5f,1.0f,-0.5f},{0.5f,0.0f,-0.5f}, // back
             {-0.5f,0.0f,0.5f},{0.5f,0.0f,0.5f},{0.5f,1.0f,0.5f},{-0.5f,1.0f,0.5f},    // front
@@ -61,9 +61,10 @@ protected:
 
         int idx = 0;
         for(int i=0;i<24;i++){
-            vertices[idx++] = positions[i].x;
-            vertices[idx++] = positions[i].y;
-            vertices[idx++] = positions[i].z;
+            // Scale positions by dimensional parameters
+            vertices[idx++] = positions[i].x * x_width;
+            vertices[idx++] = positions[i].y * y_height;
+            vertices[idx++] = positions[i].z * z_depth;
 
             vertices[idx++] = normals[i].x;
             vertices[idx++] = normals[i].y;
@@ -94,10 +95,21 @@ protected:
     }
 
 public:
+    // Default Make() method for backward compatibility
     static CubePtr Make() {
+        return Make(1.0f, 1.0f, 1.0f);
+    }
+
+    // Parameterized Make() method with custom dimensions
+    static CubePtr Make(float x_width, float y_height, float z_depth) {
+        // Validate dimensional parameters (clamp to minimum 0.01f if <= 0)
+        if (x_width <= 0.0f) x_width = 0.01f;
+        if (y_height <= 0.0f) y_height = 0.01f;
+        if (z_depth <= 0.0f) z_depth = 0.01f;
+        
         int nverts = 0;
         int nindices = 0;
-        float* vertices = generateVertexData(nverts);
+        float* vertices = generateVertexData(x_width, y_height, z_depth, nverts);
         unsigned int* indices = generateIndices(nindices);
         return CubePtr(new Cube(vertices, indices, nverts, nindices));
     }

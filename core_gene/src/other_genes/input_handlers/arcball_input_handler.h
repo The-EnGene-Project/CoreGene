@@ -95,6 +95,10 @@ public:
         auto controller = ArcBallController::CreateFromCamera();
         return std::make_shared<ArcBallInputHandler>(controller);
     }
+
+    ArcBallController& getController() {
+        return *m_controller;
+    }
     
     // --- Simple Attachment Interface ---
     

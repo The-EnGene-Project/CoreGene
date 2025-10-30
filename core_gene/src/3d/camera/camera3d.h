@@ -6,6 +6,10 @@
 
 namespace component {
 
+// Forward-declare for the smart pointer
+class Camera3D;
+using Camera3DPtr = std::shared_ptr<Camera3D>;
+
 // --- Data Struct for the Camera Position UBO ---
 /**
  * @struct CameraPosition
@@ -40,7 +44,7 @@ protected:
         // Automatically create and store the ON_DEMAND position resource.
         m_position_resource = uniform::UBO<CameraPosition>::Make(
             "CameraPosition",
-            uniform::UpdateMode::ON_DEMAND,
+            uniform::UpdateMode::PER_FRAME,
             position_binding_point
         );
 
@@ -69,7 +73,7 @@ public:
      * @brief Binds both camera UBOs (matrices and position) to a specific shader.
      * @param shader The shader to bind to.
      */
-    void bindToShader(shader::ShaderPtr shader) const override {
+    virtual void bindToShader(shader::ShaderPtr shader) const override {
         if (shader) {
             Camera::bindToShader(shader); // Call base class implementation
             shader->addResourceBlockToBind("CameraPosition");

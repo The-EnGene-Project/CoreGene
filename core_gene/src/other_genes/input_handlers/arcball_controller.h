@@ -429,7 +429,6 @@ public:
         // First, check if the camera has a target set and use it as the arcball center
         auto camera_target = camera->getTarget();
         if (camera_target) {
-            std::cout << "ArcBall: Using camera's existing target as arcball center" << std::endl;
             setTarget(camera_target);
         } else if (m_target == glm::vec3(0.0f) && !m_target_component) {
             // If no camera target and no arcball target is set, calculate a reasonable target based on camera orientation
@@ -439,7 +438,6 @@ public:
             // Set target at a reasonable distance in front of the camera
             float default_target_distance = 5.0f;
             m_target = camera_position + forward * default_target_distance;
-            std::cout << "ArcBall: No camera target found, using calculated target based on camera orientation" << std::endl;
         }
         
         // Calculate spherical coordinates from current camera position relative to target
@@ -447,11 +445,6 @@ public:
         
         // Ensure radius is within configured limits
         m_radius = glm::clamp(m_radius, m_min_radius, m_max_radius);
-        
-        std::cout << "ArcBall: Initialized from camera - Position: (" 
-                  << camera_position.x << ", " << camera_position.y << ", " << camera_position.z 
-                  << "), Target: (" << m_target.x << ", " << m_target.y << ", " << m_target.z 
-                  << "), Radius: " << m_radius << std::endl;
     }
 
 private:

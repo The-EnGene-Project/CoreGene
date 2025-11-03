@@ -27,7 +27,11 @@ namespace detail {
     template<> struct GLTypeFor<glm::vec4> { static const GLenum value = GL_FLOAT_VEC4; };
     template<> struct GLTypeFor<glm::mat3> { static const GLenum value = GL_FLOAT_MAT3; };
     template<> struct GLTypeFor<glm::mat4> { static const GLenum value = GL_FLOAT_MAT4; };
-    // ... add any other types you support, like glm::ivec2, bool, etc.
+    
+    // Sampler types (represented as int in C++ for texture unit binding)
+    // Note: We use a custom struct to distinguish sampler2D from regular int
+    struct Sampler2D { int unit; };
+    template<> struct GLTypeFor<Sampler2D> { static const GLenum value = GL_SAMPLER_2D; };
 }
 
 // Forward declaration
@@ -148,6 +152,13 @@ template<>
 inline void Uniform<glm::mat4>::apply() const {
     if (isValid()) {
         glUniformMatrix4fv(m_location, 1, GL_FALSE, glm::value_ptr(value_provider()));
+    }
+}
+
+template<>
+inline void Uniform<detail::Sampler2D>::apply() const {
+    if (isValid()) {
+        glUniform1i(m_location, value_provider().unit);
     }
 }
 

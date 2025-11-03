@@ -12,11 +12,17 @@
 
 namespace uniform {
 
+// Forward declare Sampler2D
+namespace detail {
+    struct Sampler2D;
+}
+
 // A variant type to hold any of the supported uniform data types.
 using UniformData = std::variant<
     int, float,
     glm::vec2, glm::vec3, glm::vec4,
-    glm::mat3, glm::mat4
+    glm::mat3, glm::mat4,
+    detail::Sampler2D
 >;
 
 /**
@@ -59,6 +65,8 @@ struct PendingUniformCommand {
                 glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(arg));
             } else if constexpr (std::is_same_v<T, glm::mat4>) {
                 glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(arg));
+            } else if constexpr (std::is_same_v<T, detail::Sampler2D>) {
+                glUniform1i(location, arg.unit);
             }
         }, data);
     }

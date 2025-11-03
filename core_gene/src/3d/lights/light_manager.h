@@ -99,7 +99,7 @@ private:
     }
     
     // Friend declaration for singleton accessor
-    friend LightManagerImpl<MAX_SCENE_LIGHTS>& manager();
+    friend LightManagerImpl<max_scene_lights>& manager();
 
 public:
     // Delete copy and move constructors/operators to enforce singleton
@@ -266,10 +266,10 @@ public:
 /**
  * @brief Type alias for the light manager with the configured maximum light count.
  * 
- * This alias uses the MAX_SCENE_LIGHTS constant from light_config.h to instantiate
+ * This alias uses the max_scene_lights constant from light_config.h to instantiate
  * the template with the correct size.
  */
-using LightManager = LightManagerImpl<MAX_SCENE_LIGHTS>;
+using LightManager = LightManagerImpl<max_scene_lights>;
 
 /**
  * @brief Provides access to the singleton light manager instance.

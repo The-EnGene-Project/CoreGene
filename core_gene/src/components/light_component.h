@@ -12,7 +12,7 @@
 // Forward declaration of light manager
 namespace light {
     template<size_t MAX_LIGHTS> class LightManagerImpl;
-    using LightManager = LightManagerImpl<MAX_SCENE_LIGHTS>;
+    using LightManager = LightManagerImpl<max_scene_lights>;
     LightManager& manager();
 }
 

@@ -104,8 +104,6 @@ public:
             
             // You can optionally control which messages you want to see
             // glDebugMessageControl(GL_DONT_CARE, GL_DEBUG_TYPE_ERROR, GL_DONT_CARE, 0, nullptr, GL_TRUE);
-            
-            std::cout << "OpenGL Debug Callback enabled." << std::endl;
         } else {
             std::cerr << "Warning: Could not enable OpenGL Debug Callback. "
                       << "Did you request a debug context?" << std::endl;

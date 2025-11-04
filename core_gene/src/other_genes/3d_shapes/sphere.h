@@ -25,11 +25,11 @@ class Sphere : public geometry::Geometry {
 protected:
     // Construtor protegido recebe diretamente os arrays já gerados
     Sphere(float* vertices, unsigned int* indices, int nverts, int nindices)
-        : geometry::Geometry(vertices, indices, nverts, nindices, 3, {3,3,3,2})
+        : geometry::Geometry(vertices, indices, nverts, nindices, 3, {3,3,2})
     {}
 
     // Funções de geração de malha
-    static float* generateVertexData(GridPtr grid, int& outVertexCount) {
+    static float* generateVertexData(GridPtr grid, float radius, int& outVertexCount) {
         const float* texcoord = grid->GetCoords();
         int vertexCount = grid->VertexCount();
         outVertexCount = vertexCount;
@@ -51,7 +51,11 @@ protected:
                 sinf(phi) * sinf(theta)
             );
 
-            glm::vec3 normal = glm::normalize(pos);
+            // Scale position by radius
+            pos *= radius;
+
+            // Normal remains unit length (normalized before scaling)
+            glm::vec3 normal = glm::normalize(pos / radius);
             glm::vec3 tangent(-sinf(theta), 0.0f, cosf(theta));
             glm::vec2 uv(u, 1.0f - v);
 
@@ -77,13 +81,25 @@ protected:
     }
 
 public:
-    // Wrapper seguro para criar uma Sphere
+    // Wrapper seguro para criar uma Sphere (backward compatibility)
     static SpherePtr Make(int nstack = 64, int nslice = 64) {
+        return Make(1.0f, nstack, nslice);
+    }
+
+    // Wrapper seguro para criar uma Sphere com raio customizado
+    static SpherePtr Make(float radius, int nstack = 64, int nslice = 64) {
+        // Validate radius parameter
+        if (radius <= 0.0f) radius = 0.01f;
+        
+        // Validate segment parameters
+        if (nstack < 2) nstack = 2;
+        if (nslice < 3) nslice = 3;
+
         GridPtr grid = Grid::Make(nslice, nstack);
 
         int nverts = 0;
         int nindices = 0;
-        float* vertices = generateVertexData(grid, nverts);
+        float* vertices = generateVertexData(grid, radius, nverts);
         unsigned int* indices = generateIndices(grid, nindices);
 
         return SpherePtr(new Sphere(vertices, indices, nverts, nindices));

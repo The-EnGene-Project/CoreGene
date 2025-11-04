@@ -1,32 +1,19 @@
-#version 410
+#version 410 core
+    layout (location = 0) in vec3 a_pos;
+    layout (location = 1) in vec3 a_normal;
 
-// Vertex attributes
-layout (location=0) in vec4 vertex;
-layout (location=1) in vec3 normal;
-layout (location=2) in vec4 color;
+    out vec3 v_fragPos;
+    out vec3 v_normal;
 
-// Transformation matrices
-uniform mat4 M;          // Model matrix
-uniform mat4 V;          // View matrix
-uniform mat4 P;          // Projection matrix
-uniform mat3 normalMatrix; // Normal transformation matrix (inverse transpose of model)
+    layout (std140) uniform CameraMatrices {
+        mat4 view;
+        mat4 projection;
+    };
 
-// Output to fragment shader
-out vec3 fragPos;
-out vec3 fragNormal;
-out vec4 fragColor;
+    uniform mat4 u_model;
 
-void main() {
-    // Transform vertex to world space
-    vec4 worldPos = M * vertex;
-    fragPos = worldPos.xyz;
-    
-    // Transform normal to world space
-    fragNormal = normalize(normalMatrix * normal);
-    
-    // Pass through color
-    fragColor = color;
-    
-    // Transform to clip space
-    gl_Position = P * V * worldPos;
-}
+    void main() {
+        v_fragPos = vec3(u_model * vec4(a_pos, 1.0));
+        v_normal = mat3(transpose(inverse(u_model))) * a_normal;
+        gl_Position = u_model * vec4(a_pos, 1.0);
+    }

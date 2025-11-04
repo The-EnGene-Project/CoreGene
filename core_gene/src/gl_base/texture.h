@@ -265,4 +265,29 @@ inline std::function<int()> getUnitProvider(const std::string& samplerName) {
 }
 
 } // namespace texture
+
+// Forward declare Sampler2D for the overload
+namespace uniform { namespace detail { struct Sampler2D; } }
+
+namespace texture {
+
+/**
+ * @brief Returns a provider function for sampler2D uniforms.
+ * 
+ * This is the type-safe version that returns uniform::detail::Sampler2D
+ * instead of int. Use this when configuring sampler2D uniforms.
+ * 
+ * Example:
+ * @code
+ * shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture", 
+ *     texture::getSamplerProvider("u_texture"));
+ * @endcode
+ */
+inline std::function<uniform::detail::Sampler2D()> getSamplerProvider(const std::string& samplerName) {
+    return [samplerName]() -> uniform::detail::Sampler2D {
+        return uniform::detail::Sampler2D{static_cast<int>(texture::stack()->getUnitForSampler(samplerName))};
+    };
+}
+
+} // namespace texture
 #endif // TEXTURE_H

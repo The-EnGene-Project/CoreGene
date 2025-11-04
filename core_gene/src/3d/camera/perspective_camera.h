@@ -64,6 +64,24 @@ public:
         );
     }
 
+    
+    /**
+     * @brief Static factory method using default binding points.
+     */
+    static PerspectiveCameraPtr Make(
+        float fov_degrees = 80.0f, float near_plane = 0.1f, float far_plane = 100.0f) 
+    {
+        return PerspectiveCameraPtr(
+            new PerspectiveCamera(
+                0,
+                1, // Default binding points
+                fov_degrees, 
+                near_plane, 
+                far_plane
+            )
+        );
+    }
+
     ~PerspectiveCamera() {
         setTarget(nullptr);
         this->removeObserver(this);
@@ -116,6 +134,10 @@ public:
         m_is_view_matrix_dirty = true;
     }
 
+    ObservedTransformComponentPtr getTarget() const override {
+        return m_target;
+    }
+
     glm::vec3 getWorldPosition() override {
         // getWorldTransform() calculates and caches the latest world matrix.
         // We can then extract the position from the final column.
@@ -129,6 +151,7 @@ public:
      */
     void onNotify(const ISubject* subject) override {
         // Mark the view matrix cache as dirty for the next render frame.
+        ObservedTransformComponent::onNotify(subject);
         m_is_view_matrix_dirty = true;
     }
 

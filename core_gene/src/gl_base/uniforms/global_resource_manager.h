@@ -49,6 +49,19 @@ public:
         if (!resource) return;
 
         const std::string& name = resource->getName();
+        GLuint binding_point = resource->getBindingPoint();
+        
+        // Check if the binding point is already in use by a different resource
+        for (const auto& [existing_name, existing_resource] : m_known_resources) {
+            if (existing_resource->getBindingPoint() == binding_point && existing_name != name) {
+                std::cerr << "Warning: Binding point " << binding_point 
+                          << " is already in use by resource '" << existing_name 
+                          << "'. Registering new resource '" << name 
+                          << "' with the same binding point will cause conflicts." << std::endl;
+                break;
+            }
+        }
+        
         auto it = m_known_resources.find(name);
 
         if (it != m_known_resources.end()) {
@@ -177,6 +190,15 @@ public:
             bindResourceToShader(shader_pid, pair.first);
 
         }
+    }
+
+    /**
+     * @brief Checks if a resource with the given name is registered.
+     * @param resourceName The name of the resource to check.
+     * @return True if the resource is registered, false otherwise.
+     */
+    bool isResourceRegistered(const std::string& resourceName) const {
+        return m_known_resources.find(resourceName) != m_known_resources.end();
     }
 
 };

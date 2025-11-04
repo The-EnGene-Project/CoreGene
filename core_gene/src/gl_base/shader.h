@@ -161,6 +161,8 @@ private:
             glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(value));
         } else if constexpr (std::is_same_v<T, glm::mat4>) {
             glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+        } else if constexpr (std::is_same_v<T, uniform::detail::Sampler2D>) {
+            glUniform1i(location, value.unit);
         }
     }
 
@@ -197,6 +199,29 @@ protected:
 
             // Ignore built-in OpenGL uniforms which start with "gl_"
             if (uniform_name.rfind("gl_", 0) == 0) {
+                continue;
+            }
+            
+            // Check if this uniform is part of a uniform block (UBO)
+            GLuint uniform_index = i;
+            GLint block_index = -1;
+            glGetActiveUniformsiv(m_pid, 1, &uniform_index, GL_UNIFORM_BLOCK_INDEX, &block_index);
+            
+            // If block_index != -1, this uniform is part of a UBO
+            if (block_index != -1) {
+                // Get the block name to check if it's registered
+                GLsizei block_name_length;
+                GLchar block_name[256];
+                glGetActiveUniformBlockName(m_pid, block_index, 256, &block_name_length, block_name);
+                std::string block_name_str(block_name, block_name_length);
+                
+                // Check if this UBO block is registered with the manager
+                if (!uniform::manager().isResourceRegistered(block_name_str)) {
+                    std::cerr << "Warning: Uniform '" << uniform_name << "' is part of UBO block '" 
+                              << block_name_str << "' which is not registered with the GlobalResourceManager. "
+                              << "The uniform block may not be properly bound." << std::endl;
+                }
+                // Skip validation for UBO members since they're managed by the UBO system
                 continue;
             }
             
@@ -278,6 +303,9 @@ public:
             }
             else if (const auto* provider = std::any_cast<std::function<glm::mat4()>>(&any_provider)) {
                 shader->configureDynamicUniform<glm::mat4>(name, *provider);
+            }
+            else if (const auto* provider = std::any_cast<std::function<uniform::detail::Sampler2D()>>(&any_provider)) {
+                shader->configureDynamicUniform<uniform::detail::Sampler2D>(name, *provider);
             }
             else {
                 std::cerr << "Warning: Uniform '" << name << "' has an unsupported type in Make function." << std::endl;
@@ -366,13 +394,12 @@ public:
             throw exception::ShaderException("Shader linking failed: " + std::string(message.data()));
         }
 
-        // 3. Bind Tier 1 (Global Resources)
-        for (const auto& block_name : m_resource_blocks_to_bind) {
-            uniform::manager().bindResourceToShader(m_pid, block_name);
-        }
+        bindRegisteredShaderResources();
+        GL_CHECK("bind resources");
 
         // 4. CRITICAL: Re-find all Tier 2 & 3 uniform locations
         // This fixes the stale location bug
+        // TODO: BACALHAU needs to check if the shader is actually active before doing this
         for (auto& [name, uniform_ptr] : m_static_uniforms) {
             uniform_ptr->findLocation(m_pid);
         }
@@ -389,6 +416,13 @@ public:
     void addResourceBlockToBind(const std::string& block_name) {
         m_resource_blocks_to_bind.push_back(block_name);
         m_is_dirty = true;
+    }
+
+    void bindRegisteredShaderResources() {
+        // 3. Bind Tier 1 (Global Resources)
+        for (const auto& block_name : m_resource_blocks_to_bind) {
+            uniform::manager().bindResourceToShader(m_pid, block_name);
+        }
     }
 
     // --- Tier 2: Static Uniform Configuration & Application ---
@@ -410,6 +444,17 @@ public:
     }
 
     // --- Tier 3: Dynamic Uniform Configuration & Application ---
+    /**
+     * @brief Configures a dynamic uniform that will be applied every draw call.
+     * 
+     * Supported types: int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat3, glm::mat4, uniform::detail::Sampler2D
+     * 
+     * Example for sampler2D:
+     * @code
+     * shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture", 
+     *     []() { return uniform::detail::Sampler2D{0}; });
+     * @endcode
+     */
     template<typename T>
     ShaderPtr configureDynamicUniform(const std::string& name, std::function<T()> value_provider) {
         // 1. Creates the Uniform object
@@ -445,6 +490,20 @@ public:
             // Slow path: Shader is inactive, queue the command.
             m_pending_uniform_queue.emplace_back(uniform::PendingUniformCommand{name, value});
         }
+    }
+    
+    /**
+     * @brief Convenience method to set a sampler2D uniform to a texture unit.
+     * @param name The name of the sampler uniform in the shader.
+     * @param texture_unit The texture unit index (0-31 typically).
+     * 
+     * Example:
+     * @code
+     * shader->setSampler("u_texture", 0);
+     * @endcode
+     */
+    void setSampler(const std::string& name, int texture_unit) {
+        setUniform(name, uniform::detail::Sampler2D{texture_unit});
     }
 
     // --- Shader Activation ---
@@ -534,9 +593,29 @@ public:
         return current_shader;
     }
 
+    /**
+     * @brief Peeks at the top shader without activating it.
+     * @return A shared pointer to the shader at the top of the stack.
+     * 
+     * Unlike top(), this method does not activate the shader or apply any uniforms.
+     * Use this when you need to inspect the shader without triggering state changes.
+     */
+    ShaderPtr peek() const {
+        return stack.back();
+    }
+
     unsigned int topId() {
         return top()->GetShaderID();
     }
+    
+    /**
+     * @brief Peeks at the shader ID without activating the shader.
+     * @return The OpenGL shader program ID of the top shader.
+     */
+    unsigned int peekId() const {
+        return stack.back()->GetShaderID();
+    }
+    
     ShaderPtr getLastUsedShader() const {
         return last_used_shader;
     }

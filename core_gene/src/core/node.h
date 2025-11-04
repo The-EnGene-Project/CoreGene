@@ -53,6 +53,23 @@ private:
     }
 
 public:
+
+    /**
+     * @brief Destructor
+     *
+     * Ensures that all children have their parent pointer cleared
+     * to prevent expired weak_ptr issues when this node is destroyed.
+     */
+    ~Node() {
+        // std::cout << "Destroying " << name << std::endl; // Helpful for debugging
+        for (const auto& child : children) {
+            if (child) {
+                // Set the child's parent to an empty weak_ptr.
+                child->setParent({}); 
+            }
+        }
+    }
+
     /**
      * @brief Factory function to create a new Node.
      * @param name The name of the node.

@@ -12,7 +12,7 @@
 // Forward declaration of light manager
 namespace light {
     template<size_t MAX_LIGHTS> class LightManagerImpl;
-    using LightManager = LightManagerImpl<MAX_SCENE_LIGHTS>;
+    using LightManager = LightManagerImpl<max_scene_lights>;
     LightManager& manager();
 }
 
@@ -63,8 +63,6 @@ private:
         if (!light) {
             throw std::invalid_argument("LightComponent requires a valid light pointer");
         }
-        // Register with the light manager
-        light::manager().registerLight(this->shared_from_this());
     }
 
 public:
@@ -97,7 +95,11 @@ public:
      * @endcode
      */
     static LightComponentPtr Make(light::LightPtr light, transform::TransformPtr transform) {
-        return LightComponentPtr(new LightComponent(light, transform));
+        LightComponentPtr comp = LightComponentPtr(new LightComponent(light, transform));
+        
+        // Register with the light manager
+        light::manager().registerLight(comp);
+        return comp;
     }
 
     /**

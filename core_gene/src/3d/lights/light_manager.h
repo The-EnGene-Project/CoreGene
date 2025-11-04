@@ -59,7 +59,7 @@ private:
     /**
      * @brief Uniform Buffer Object for GPU light data.
      * 
-     * This UBO holds the SceneLights structure and is bound to binding point 0.
+     * This UBO holds the SceneLights structure and is bound to binding point 2.
      * It uses ON_DEMAND update mode, meaning it only uploads data when apply()
      * is explicitly called.
      */
@@ -87,10 +87,11 @@ private:
         m_scene_data.active_light_count = 0;
         
         // Create UBO with ON_DEMAND update mode
+        // TODO: BACALHAU binding point should be configurable
         m_light_resource = uniform::UBO<SceneLights<MAX_LIGHTS>>::Make(
             "SceneLights",
             uniform::UpdateMode::ON_DEMAND,
-            0  // Binding point 0
+            2  // Binding point 2
         );
         
         // Set the data provider lambda
@@ -98,7 +99,7 @@ private:
     }
     
     // Friend declaration for singleton accessor
-    friend LightManagerImpl& manager();
+    friend LightManagerImpl<max_scene_lights>& manager();
 
 public:
     // Delete copy and move constructors/operators to enforce singleton
@@ -142,6 +143,34 @@ public:
             m_registered_lights.erase(it);
         }
     }
+
+    /**
+     * @brief Binds the managed light UBO to a specific shader program.
+     * 
+     * This method adds the "SceneLights" uniform block to the shader's resource
+     * binding list. The actual binding will occur when the shader is baked or
+     * when bindRegisteredShaderResources() is called.
+     * 
+     * This is consistent with how Camera's bindToShader works - it defers the
+     * actual binding rather than doing it immediately.
+     * 
+     * @param shader_obj A shared pointer to the shader object.
+     */
+    void bindToShader(shader::ShaderPtr shader_obj) {
+        if (!shader_obj) {
+            std::cerr << "Error: LightManager cannot bind to null shader." << std::endl;
+            return;
+        }
+        
+        if (!m_light_resource) {
+            std::cerr << "Error: LightManager cannot bind to shader. Light resource is null." << std::endl;
+            return;
+        }
+        
+        // Add the resource to the shader's binding list (deferred binding)
+        // This is consistent with how Camera::bindToShader works
+        shader_obj->addResourceBlockToBind(m_light_resource->getName());
+    }
     
     /**
      * @brief Updates light data and synchronizes it to the GPU.
@@ -170,7 +199,7 @@ public:
         
         // Process each registered component
         size_t light_index = 0;
-        for (auto* component : m_registered_lights) {
+        for (auto component : m_registered_lights) {
             if (light_index >= MAX_LIGHTS) {
                 std::cerr << "Warning: Scene has more lights than MAX_SCENE_LIGHTS (" 
                           << MAX_LIGHTS << "). Extra lights will be ignored." << std::endl;
@@ -190,14 +219,14 @@ public:
             data.type = static_cast<int>(light->getType());
             
             // Type-specific packing
-            if (auto* dir_light = dynamic_cast<DirectionalLight*>(light.get())) {
+            if (auto dir_light = dynamic_cast<DirectionalLight*>(light.get())) {
                 // Transform direction to world space (w=0 for directions)
                 glm::vec4 world_dir = world_transform * glm::vec4(dir_light->getBaseDirection(), 0.0f);
                 data.direction = glm::normalize(world_dir);
                 data.position = glm::vec4(0.0f);  // Unused for directional
                 data.attenuation = glm::vec4(0.0f);  // Unused for directional
             }
-            else if (auto* spot_light = dynamic_cast<SpotLight*>(light.get())) {
+            else if (auto spot_light = dynamic_cast<SpotLight*>(light.get())) {
                 // Transform position to world space
                 data.position = world_transform * spot_light->getPosition();
                 // Transform direction to world space and normalize
@@ -211,7 +240,7 @@ public:
                     spot_light->getCutoffAngle()
                 );
             }
-            else if (auto* point_light = dynamic_cast<PointLight*>(light.get())) {
+            else if (auto point_light = dynamic_cast<PointLight*>(light.get())) {
                 // Transform position to world space (w=1 for positions)
                 data.position = world_transform * point_light->getPosition();
                 // Pack constant, linear, quadratic into attenuation vec4
@@ -237,10 +266,10 @@ public:
 /**
  * @brief Type alias for the light manager with the configured maximum light count.
  * 
- * This alias uses the MAX_SCENE_LIGHTS constant from light_config.h to instantiate
+ * This alias uses the max_scene_lights constant from light_config.h to instantiate
  * the template with the correct size.
  */
-using LightManager = LightManagerImpl<MAX_SCENE_LIGHTS>;
+using LightManager = LightManagerImpl<max_scene_lights>;
 
 /**
  * @brief Provides access to the singleton light manager instance.

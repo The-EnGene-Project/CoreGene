@@ -141,6 +141,14 @@ public:
     }
 
     /**
+     * @brief Gets the current target that the camera is looking at.
+     * @return A shared pointer to the target component, or nullptr if no target is set.
+     */
+    ObservedTransformComponentPtr getTarget() const override {
+        return m_target;
+    }
+
+    /**
      * @brief Retrieves the camera's world-space position directly from its transform.
      */
     glm::vec3 getWorldPosition() override {
@@ -156,6 +164,7 @@ public:
      */
     void onNotify(const ISubject* subject) override {
         // Mark the view matrix cache as dirty for the next render frame.
+        ObservedTransformComponent::onNotify(subject);
         m_is_view_matrix_dirty = true;
     }
 

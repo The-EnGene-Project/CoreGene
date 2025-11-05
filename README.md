@@ -1,145 +1,1292 @@
-# EnGene - The modular graphical engine for developers
+# EnGene - Modular Declarative C++ OpenGL Library
 
-This project tries to be a modular declarative engine for applications that
-want to render fully customizable graphics. 
+EnGene is a modular, declarative C++ OpenGL abstraction library for developers who want full control over their graphics rendering pipeline. Build complex 2D/3D scenes using an intuitive scene graph architecture with an ECS-inspired component system.
 
-Currently the project interfaces with the GPU using OpenGL, but there are plans
-for adding compatibility with different graphic APIs like Vulkan and DirectX.
+## Table of Contents
 
-### How to include this library in your project
+- [Key Features](#key-features)
+- [Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Minimal Working Example](#minimal-working-example)
+  - [Evolved Example with Other Genes](#evolved-example-with-other-genes)
+- [Core Concepts](#core-concepts)
+  - [Scene Graph](#scene-graph)
+  - [Component System](#component-system)
+  - [Transform Hierarchy](#transform-hierarchy)
+  - [Rendering Pipeline](#rendering-pipeline)
+- [API Reference](#api-reference)
+  - [Scene Management](#scene-management)
+    - [SceneGraph](#scenegraph)
+    - [SceneNode and SceneNodeBuilder](#scenenode-and-scenenodebuilder)
+  - [Component System](#component-system-1)
+    - [Component Base Class](#component-base-class)
+    - [ComponentCollection](#componentcollection)
+    - [Core Components](#core-components)
+  - [Rendering System](#rendering-system)
+    - [Shader](#shader)
+    - [ShaderStack](#shaderstack)
+    - [Geometry](#geometry)
+    - [Transform](#transform)
+    - [TransformStack](#transformstack)
+    - [Material](#material)
+    - [MaterialStack](#materialstack)
+    - [Texture](#texture)
+    - [TextureStack](#texturestack)
+  - [Lighting System](#lighting-system)
+    - [Light Types](#light-types)
+    - [LightManager](#lightmanager)
+  - [Camera System](#camera-system)
+    - [Camera (Base Class)](#camera-base-class)
+    - [OrthographicCamera](#orthographiccamera)
+    - [PerspectiveCamera](#perspectivecamera)
+  - [Application Framework](#application-framework)
+    - [EnGene](#engene)
+    - [EnGeneConfig](#engeneconfig)
+    - [InputHandler](#inputhandler)
+- [Advanced Topics](#advanced-topics)
+  - [Understanding Stack Systems](#understanding-stack-systems)
+  - [Component Priority System](#component-priority-system)
+  - [Uniform System Best Practices](#uniform-system-best-practices)
+  - [Uniform Location Invalidation](#uniform-location-invalidation)
+  - [Light Count Configuration](#light-count-configuration)
+- [Project Structure](#project-structure)
+- [Dependencies](#dependencies)
+  - [Dependency Management](#dependency-management)
+- [Examples](#examples)
+  - [Solar System with Lighting](#solar-system-with-lighting)
+  - [Textured Quad](#textured-quad)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+  - [Getting More Help](#getting-more-help)
+- [Contributing](#contributing)
+- [License](#license)
+- [Links](#links)
 
-Using CMake:
+## Key Features
+
+- **Declarative Scene Building** - Fluent API for intuitive scene construction
+- **Scene Graph Architecture** - Hierarchical node system with automatic state management
+- **Component System** - ECS-inspired design with priority-based execution
+- **4-Tier Uniform System** - Optimized GPU data management (UBOs, static, dynamic, immediate)
+- **Hierarchical Transforms** - Automatic matrix accumulation through scene hierarchy
+- **Material Stack** - Property inheritance and overrides for flexible appearance control
+- **Advanced Lighting** - Directional, point, and spot lights with automatic GPU upload
+- **Fixed-Timestep Loop** - Separate simulation from rendering for consistent physics
+- **Automatic Resource Management** - RAII-based cleanup for all OpenGL resources
+
+> **For Contributors:** If you want to contribute to EnGene, see [AGENTS.md](AGENTS.md) for development guidelines, architecture details, and contribution standards.
+
+---
+
+## Quick Start
+
+### Installation
+
+EnGene is a **header-only library** - no compilation required, just include the headers!
+
+**Method 1: Git Submodule (Recommended)**
+```bash
+# Add EnGene as a submodule to your project
+git submodule add https://github.com/The-EnGene-Project/CoreGene.git external/CoreGene
+
+# Initialize EnGene's dependency submodule (CoreGene-deps)
+git submodule update --init --recursive
+```
+
+Then in your `CMakeLists.txt`:
 ```cmake
-include(FetchContent)
-
-FetchContent_Declare(
-  CoreGene 
-  GIT_REPOSITORY https://github.com/The-EnGene-Project/CoreGene.git
-  GIT_TAG        main # Or a specific commit hash or release tag like v1.2.0
+# Add EnGene include directory
+target_include_directories(YourTarget PRIVATE
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/core_gene/src"
 )
 
-FetchContent_MakeAvailable(CoreGene)
-FetchContent_GetProperties(CoreGene)
+# Add dependency include directories from CoreGene-deps submodule
+target_include_directories(YourTarget PRIVATE
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glad/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glm/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/stb/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/include"  # Optional
+)
 
-include_directory(${CoreGene_SOURCE_DIR}/src)
+# Link directories for libraries (Windows MinGW example)
+link_directories(
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/lib-mingw-w64"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/lib"
+)
+
+# Link GLFW, OpenGL, and Backtrace
+target_link_libraries(YourTarget
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/lib-mingw-w64/libglfw3.a"
+    opengl32.lib  # Windows: opengl32.lib, Linux: -lGL, macOS: -framework OpenGL
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/lib/libbacktrace.a"  # Optional
+)
+```
+
+> **Note:** The `libs/` directory is a git submodule containing all dependencies. The `--recursive` flag ensures it's initialized automatically.
+
+**Method 2: Manual Copy**
+1. Download or clone the CoreGene repository
+2. Copy the `core_gene/src` directory to your project
+3. Add the include path to your CMakeLists.txt as shown above
+
+**In your C++ code:**
+```cpp
+#include <EnGene.h>                    // Main header with all functionality
+#include <core/scene_node_builder.h>  // REQUIRED for .addNode().with<>() syntax
+#include <components/all.h>            // REQUIRED for component types
+
+// Or include specific headers:
+#include "gl_base/shader.h"
+#include "core/scene.h"
+```
+
+> **⚠️ Critical Notes:**
+> - Always include `<core/scene_node_builder.h>` when using the fluent builder API
+> - Always include `<components/all.h>` to access component types
+> - Always call `glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)` at the start of your render callback
+> - Default shaders expect `vec4` for positions and colors (4 floats each)
+
+### Minimal Working Example
+
+Here's a complete example that creates a window and renders a colored triangle:
+
+```cpp
+#include <EnGene.h>
+#include <core/scene_node_builder.h>  // Required for .addNode().with<>() syntax
+#include <components/all.h>            // Required for component types
+
+int main() {
+    // Define initialization callback
+    auto on_initialize = [](engene::EnGene& app) {
+        // Create a simple triangle geometry
+        // Note: Default shader expects vec4 for positions and colors
+        std::vector<float> vertices = {
+            // positions (x, y, z, w)     // colors (r, g, b, a)
+            0.0f,  0.5f, 0.0f, 1.0f,      1.0f, 0.0f, 0.0f, 1.0f,  // top (red)
+           -0.5f, -0.5f, 0.0f, 1.0f,      0.0f, 1.0f, 0.0f, 1.0f,  // bottom-left (green)
+            0.5f, -0.5f, 0.0f, 1.0f,      0.0f, 0.0f, 1.0f, 1.0f   // bottom-right (blue)
+        };
+        std::vector<unsigned int> indices = {0, 1, 2};
+        
+        // Geometry::Make(vertices, indices, num_vertices, num_indices, position_size, {other_attribute_sizes})
+        auto triangle = geometry::Geometry::Make(
+            vertices.data(), indices.data(), 
+            3, 3,  // 3 vertices, 3 indices
+            4,     // 4 floats for position (x, y, z, w) - vec4
+            {4}    // 4 floats for color (r, g, b, a) - vec4
+        );
+        
+        // Build scene graph
+        scene::graph()->addNode("Triangle")
+            .with<component::GeometryComponent>(triangle);
+    };
+    
+    // Define fixed update callback (for physics/simulation)
+    auto on_fixed_update = [](double dt) {
+        // Update logic here (runs at fixed 60 FPS)
+    };
+    
+    // Define render callback
+    auto on_render = [](double alpha) {
+        // CRITICAL: Always clear buffers before drawing
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        // Draw the scene
+        scene::graph()->draw();
+    };
+    
+    // Create and run the application (config is optional)
+    engene::EnGene app(on_initialize, on_fixed_update, on_render);
+    app.run();
+    
+    return 0;
+}
+```
+
+### Evolved Example with Other Genes
+
+Here's a more practical example using pre-built shapes from `other_genes/`:
+
+```cpp
+#include <EnGene.h>
+#include "other_genes/shapes/circle.h"
+#include "other_genes/3d_shapes/sphere.h"
+
+int main() {
+    auto on_initialize = [](engene::EnGene& app) {
+        // Create materials inline
+        auto red_material = material::Material::Make(glm::vec3(1.0f, 0.2f, 0.2f))
+            ->setSpecular(glm::vec3(1.0f))
+            ->setShininess(32.0f);
+        
+        auto blue_material = material::Material::Make(glm::vec3(0.2f, 0.2f, 1.0f))
+            ->setSpecular(glm::vec3(0.5f))
+            ->setShininess(16.0f);
+        
+        // Build scene with inline component creation
+        scene::graph()->addNode("Sun")
+            .with<component::TransformComponent>(
+                transform::Transform::Make()->scale(2.0f, 2.0f, 2.0f)
+            )
+            .with<component::MaterialComponent>(red_material)
+            .with<component::GeometryComponent>(
+                Sphere::Make(1.0f, 32, 32)  // radius, segments, rings
+            )
+            .addNode("Planet")
+                .with<component::TransformComponent>(
+                    transform::Transform::Make()
+                        ->translate(5.0f, 0.0f, 0.0f)
+                        ->scale(0.8f, 0.8f, 0.8f)
+                )
+                .with<component::MaterialComponent>(blue_material)
+                .with<component::GeometryComponent>(
+                    Sphere::Make(1.0f, 24, 24)
+                );
+    };
+    
+    auto on_fixed_update = [](double dt) {
+        // Rotate planet around sun
+        static float angle = 0.0f;
+        angle += dt * 30.0f;  // 30 degrees per second
+        
+        auto planet = scene::graph()->findNode("Planet");
+        if (planet) {
+            auto transform_comp = planet->payload().get<component::TransformComponent>();
+            if (transform_comp) {
+                transform_comp->getTransform()
+                    ->setTranslate(5.0f * cos(glm::radians(angle)), 
+                                   0.0f, 
+                                   5.0f * sin(glm::radians(angle)));
+            }
+        }
+    };
+    
+    auto on_render = [](double alpha) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        scene::graph()->draw();
+    };
+    
+    engene::EnGene app(on_initialize, on_fixed_update, on_render);
+    app.run();
+    
+    return 0;
+}
 ```
 
 ---
 
-# Project Architecture
+## Core Concepts
 
-## Main Classes & Entities
+### Scene Graph
 
-### Core Architecture
+The scene graph is a hierarchical tree structure where each node can have components that define its behavior. Nodes automatically inherit transformations from their parents.
 
-**Node<T>**
-Generic tree structure implementing the Composite pattern with visitor support. Templated on payload type for flexibility. Each node maintains parent/child relationships via shared/weak pointers, stores custom pre/post-visit actions, and provides traversal methods. Supports operations like `addChild()`, `removeChild()`, `visit()`, and applicability toggling for conditional rendering. The visitor pattern allows behavior injection without modifying the node class itself.
+```cpp
+// Access the singleton scene graph
+scene::graph()->addNode("Parent")
+    .with<component::TransformComponent>(parent_transform)
+    .addNode("Child")
+        .with<component::TransformComponent>(child_transform)
+        .with<component::GeometryComponent>(geometry);
+```
 
-**SceneGraph**
-Meyers singleton managing the entire scene hierarchy. Maintains the root node, a name-based registry for fast lookups, an ID-based registry for unique identification, and the active camera reference. Provides the `addNode()` entry point for the builder pattern and `buildAt()` for continuing builds from existing nodes. Automatically creates a default orthographic camera on construction. Handles node registration, renaming, removal, and duplication. The `draw()` method initiates scene traversal from the root.
+**Key Points:**
+- Nodes are organized in a parent-child hierarchy
+- Transformations accumulate down the tree
+- Components define node behavior (rendering, transforms, etc.)
+- Scene traversal happens automatically during `scene::graph()->draw()`
 
-**SceneNode**
-Type alias for `Node<ComponentCollection>` - a node specialized to carry components as its payload. This is the fundamental building block of the scene graph. Each SceneNode can have multiple components that define its behavior (transform, geometry, shader, etc.). The node's `visit()` method triggers component `apply()` before visiting children and `unapply()` after, creating a stack-based state machine.
+### Component System
 
-**SceneNodeBuilder**
-Fluent interface for declarative scene construction. Wraps a SceneNode and provides chainable methods: `with<T>()` adds unnamed components, `withNamed<T>()` adds named components, and `addNode()` creates child nodes returning a new builder. Supports implicit conversion to `SceneNode&` and `SceneNodePtr` for seamless integration. The builder pattern eliminates manual node creation and registration boilerplate.
+Components are modular behaviors attached to scene nodes. Each component has a priority that determines execution order.
+
+**Component Priorities:**
+- **Transform (100)** - Applied first to set up transformations
+- **Shader (200)** - Shader selection
+- **Material/Texture (300)** - Appearance properties
+- **Camera (400)** - View/projection setup
+- **Geometry (500)** - Drawing happens last
+- **Custom (600+)** - User-defined behaviors
+
+```cpp
+// Add components to a node
+node.with<component::TransformComponent>(transform)
+    .with<component::ShaderComponent>(custom_shader)
+    .with<component::MaterialComponent>(material)
+    .with<component::GeometryComponent>(geometry);
+```
+
+**Component Lifecycle:**
+- `apply()` - Called when entering the node during scene traversal
+- `unapply()` - Called when leaving the node (in reverse priority order)
+
+### Transform Hierarchy
+
+Transforms automatically accumulate through the scene graph, creating a hierarchical transformation system.
+
+```cpp
+// Parent rotation affects all children
+scene::graph()->addNode("SolarSystem")
+    .with<component::TransformComponent>(system_rotation)
+    .addNode("Planet")
+        .with<component::TransformComponent>(orbit_transform)
+        .addNode("Moon")
+            .with<component::TransformComponent>(moon_orbit);
+// Moon's final transform: system_rotation * orbit_transform * moon_orbit
+```
+
+**Important:** The transform stack stores accumulated matrices. Each level contains the product of all parent transforms.
+
+### Rendering Pipeline
+
+The rendering pipeline follows a well-defined flow:
+
+1. **Scene Traversal** - `scene::graph()->draw()` traverses the scene tree
+2. **Component Application** - Each node applies its components in priority order
+3. **State Setup** - Transforms, shaders, materials, and textures are configured
+4. **Drawing** - Geometry components issue draw calls
+5. **State Cleanup** - Components unapply in reverse order
+
+```cpp
+// Typical rendering flow in your render callback
+auto on_render = [](double alpha) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // REQUIRED: Clear buffers
+    scene::graph()->draw();  // Traverses and renders entire scene
+};
+```
 
 ---
 
-### Component System (ECS-inspired)
+## API Reference
 
-**Component**
-Abstract base class for all components. Defines the component lifecycle with `apply()` (called on scene traversal entry) and `unapply()` (called on exit). Each component has a unique runtime ID, an optional name for retrieval, a priority value determining execution order, and a weak reference to its owner node. Uses the Strategy pattern - subclasses define specific behaviors. Priority ranges: Transform (100), Shader (200), Appearance (300), Camera (400), Geometry (500), Custom (600+).
 
-**ComponentCollection**
-Container managing all components on a node. Maintains three internal data structures: a type-indexed map for fast type-based queries, a name-indexed map for named component lookup, and a priority-sorted vector for ordered execution. Provides `get<T>()` for retrieving single components, `getAll<T>()` for retrieving all components of a type (including derived types via dynamic casting), and removal methods by instance, name, or ID. The `apply()` and `unapply()` methods iterate the sorted vector in forward/reverse order respectively.
+### Scene Management
+
+#### SceneGraph
+
+The `SceneGraph` is a Meyers singleton that manages the entire scene hierarchy.
+
+**Access:**
+```cpp
+scene::graph()  // Returns pointer to singleton instance
+```
+
+**Key Methods:**
+```cpp
+// Add a new root-level node and return a builder
+SceneNodeBuilder addNode(const std::string& name);
+
+// Continue building from an existing node
+SceneNodeBuilder buildAt(const std::string& name);
+SceneNodeBuilder buildAt(SceneNodePtr node);
+
+// Find nodes by name or ID
+SceneNodePtr findNode(const std::string& name);
+SceneNodePtr findNodeById(unsigned int id);
+
+// Camera management
+void setActiveCamera(std::shared_ptr<component::Camera> camera);
+std::shared_ptr<component::Camera> getActiveCamera();
+
+// Render the entire scene
+void draw();
+```
+
+**Example:**
+```cpp
+// Create a scene hierarchy
+scene::graph()->addNode("Root")
+    .with<component::TransformComponent>(root_transform)
+    .addNode("Child1")
+        .with<component::GeometryComponent>(geometry1)
+    .addNode("Child2")
+        .with<component::GeometryComponent>(geometry2);
+
+// Later, continue building from an existing node
+scene::graph()->buildAt("Child1")
+    .addNode("Grandchild")
+        .with<component::GeometryComponent>(geometry3);
+
+// Render the scene
+scene::graph()->draw();
+```
+
+
+#### SceneNode and SceneNodeBuilder
+
+`SceneNode` is a type alias for `Node<ComponentCollection>` - the fundamental building block of the scene.
+
+**SceneNodeBuilder** provides a fluent interface for declarative scene construction.
+
+**Builder Methods:**
+```cpp
+// Add unnamed component
+template<typename T, typename... Args>
+SceneNodeBuilder& with(Args&&... args);
+
+// Add named component
+template<typename T, typename... Args>
+SceneNodeBuilder& withNamed(const std::string& name, Args&&... args);
+
+// Add child node
+SceneNodeBuilder addNode(const std::string& name);
+
+// Get the underlying node
+SceneNode& getNode();
+SceneNodePtr getNodePtr();
+```
+
+**Example:**
+```cpp
+// Declarative scene building
+scene::graph()->addNode("Player")
+    .with<component::TransformComponent>(player_transform)
+    .withNamed<component::ShaderComponent>("PlayerShader", custom_shader)
+    .with<component::GeometryComponent>(player_model)
+    .addNode("Weapon")
+        .with<component::TransformComponent>(weapon_offset)
+        .with<component::GeometryComponent>(weapon_model);
+```
+
+
+### Component System
+
+#### Component Base Class
+
+All components inherit from the `Component` base class and implement the component lifecycle.
+
+**Lifecycle Methods:**
+```cpp
+virtual void apply();    // Called when entering node during traversal
+virtual void unapply();  // Called when leaving node (reverse order)
+```
+
+**Component Properties:**
+- **ID** - Unique runtime identifier
+- **Name** - Optional name for retrieval
+- **Priority** - Determines execution order (lower = earlier)
+- **Owner** - Weak reference to parent node
+
+#### ComponentCollection
+
+Container managing all components on a node.
+
+**Key Methods:**
+```cpp
+// Get first component of type
+template<typename T>
+std::shared_ptr<T> get();
+
+// Get named component
+template<typename T>
+std::shared_ptr<T> get(const std::string& name);
+
+// Get all components of type (including derived types)
+template<typename T>
+std::vector<std::shared_ptr<T>> getAll();
+
+// Add component
+void addComponent(std::shared_ptr<Component> component);
+
+// Remove component
+void removeComponent(std::shared_ptr<Component> component);
+void removeComponent(const std::string& name);
+void removeComponent(unsigned int id);
+```
+
+**Example:**
+```cpp
+// Access node's component collection
+auto& components = node->payload();
+
+// Add components
+components.addComponent(component::TransformComponent::Make(transform));
+
+// Retrieve components
+auto transform = components.get<component::TransformComponent>();
+auto light = components.get<component::LightComponent>("MainLight");
+auto all_transforms = components.getAll<component::TransformComponent>();
+```
+
+
+#### Core Components
 
 **TransformComponent**
-Wraps a `Transform` object and pushes its matrix onto the transform stack during `apply()`, pops during `unapply()`. Supports custom priority within a validated range (0 to CAMERA priority) to allow multiple transforms per node with controlled ordering. This enables complex hierarchies like orbit + rotation. Provides `getTransform()`, `setTransform()`, `getMatrix()`, and `setMatrix()` accessors. Multiple TransformComponents on a single node compose in priority order.
 
-**GeometryComponent**
-Wraps a `Geometry` object and calls its `Draw()` method during `apply()`. Has the highest default priority (500) to ensure drawing happens after all state setup. The geometry itself contains VAO/VBO/EBO handles and vertex attribute configuration. GeometryComponent is the final step in the rendering pipeline - by the time it executes, transforms, shaders, textures, and materials are already configured.
+Manages node transformations and pushes/pops matrices on the transform stack.
 
-**ShaderComponent**
-Overrides the default shader for a node and its subtree. Pushes the custom shader onto the shader stack during `apply()`, pops during `unapply()`. This allows per-object shader customization (e.g., textured objects, lit objects, special effects). The shader stack's lazy activation means the shader isn't actually bound until `shader::stack()->top()` is called by a GeometryComponent.
+```cpp
+// Create inline during scene building (recommended)
+scene::graph()->addNode("MyNode")
+    .with<component::TransformComponent>(
+        transform::Transform::Make()
+            ->translate(1.0f, 0.0f, 0.0f)
+            ->rotate(45.0f, 0.0f, 0.0f, 1.0f)  // degrees
+            ->scale(2.0f, 2.0f, 2.0f)
+    );
 
-**TextureComponent**
-Binds a texture to a specific texture unit and registers the sampler name with the texture stack. During `apply()`, pushes the texture onto the stack and registers the sampler-to-unit mapping. During `unapply()`, pops the texture and unregisters the sampler. This enables shader uniforms to dynamically query the correct texture unit via `texture::getUnitProvider()`. Supports multiple textures per node on different units.
+// Or create separately if you need to modify it later
+auto transform = transform::Transform::Make();
+node.with<component::TransformComponent>(transform);
 
-**MaterialComponent**
-Pushes a material onto the material stack during `apply()`, pops during `unapply()`. Materials define PBR properties (ambient, diffuse, specular, shininess) that merge hierarchically. Child nodes inherit parent material properties but can override specific values. The material stack uses provider functions to supply uniform values, enabling dynamic material changes without shader reconfiguration.
+// Custom priority (optional)
+node.with<component::TransformComponent>(transform, 150);
+```
 
-**LightComponent**
-Integrates lights into the scene graph with automatic transform inheritance. Wraps a `Light` object and a local transform. Inherits from `ObservedTransformComponent` to track world-space position/direction. Automatically registers with the `LightManager` on construction and unregisters on destruction. The manager collects all active lights and uploads them to a UBO each frame. Supports directional, point, and spot lights.
+**Priority:** 100 (default)
 
-**Camera**
-Abstract base class for all camera types. Manages aspect ratio, provides pure virtual methods for `getViewMatrix()` and `getProjectionMatrix()`, and automatically creates a UBO for camera matrices. The UBO is configured with a provider function that queries the camera's matrices each frame. Provides `bindToShader()` to register the camera's UBO with shaders. Concrete implementations include `OrthographicCamera` and `PerspectiveCamera`.
+**Lifecycle Methods:**
+- `apply()` - Pushes transform onto transform stack (used during scene traversal)
+- `unapply()` - Pops transform from stack (used during scene traversal)
 
 **ObservedTransformComponent**
-Extends `TransformComponent` and implements the `IObserver` interface. Caches the world-space transformation matrix by observing the transform stack. When the transform changes (via the observer pattern), updates the cached matrix. This is more efficient than recalculating world transforms every frame. Used by lights and cameras that need world-space positions/directions for rendering calculations.
 
----
+A specialized transform component that caches its world transform and notifies observers when it changes. Essential for cameras and objects that need to track their world position.
+
+```cpp
+// Create observed transform for a camera or tracked object
+scene::graph()->addNode("Camera")
+    .with<component::ObservedTransformComponent>(
+        transform::Transform::Make()->translate(0.0f, 5.0f, 10.0f)
+    );
+
+// Access cached world transform (efficient - no recalculation)
+auto observed = node->payload().get<component::ObservedTransformComponent>();
+const glm::mat4& world_transform = observed->getCachedWorldTransform();
+
+// Force immediate update if needed (calculates on-demand)
+const glm::mat4& updated = observed->getWorldTransform();
+```
+
+**Key Features:**
+- **Caching:** Stores world transform to avoid redundant calculations
+- **Observer Pattern:** Notifies dependents (like cameras) when transform changes
+- **Automatic Updates:** Marks cache as dirty when local transform or parent transforms change
+- **Efficient:** Only recalculates when needed
+
+**Use Cases:**
+- Camera positioning (cameras inherit from ObservedTransformComponent)
+- Light positioning with transform inheritance
+- Physics objects that need world position
+- Any object that needs efficient world transform access
+
+**Priority:** 100 (default, same as TransformComponent)
+
+**GeometryComponent**
+
+Wraps a `Geometry` object and issues draw calls.
+
+```cpp
+// Create inline during scene building (recommended)
+scene::graph()->addNode("Triangle")
+    .with<component::GeometryComponent>(
+        geometry::Geometry::Make(
+            vertices.data(), indices.data(),
+            3, 3,  // 3 vertices, 3 indices
+            3,     // position size
+            {3}    // color size
+        )
+    );
+
+// Or use pre-built shapes from other_genes
+scene::graph()->addNode("Circle")
+    .with<component::GeometryComponent>(
+        Circle::Make(0.0f, 0.0f, 1.0f, color_rgb, 32, true)
+    );
+```
+
+**Priority:** 500 (ensures drawing happens after all state setup)
+
+**Lifecycle Methods:**
+- `apply()` - Calls `geometry->Draw()` to render (used during scene traversal)
+
+**ShaderComponent**
+
+Overrides the default shader for a node and its subtree.
+
+```cpp
+// Create inline during scene building
+scene::graph()->addNode("CustomShaded")
+    .with<component::ShaderComponent>(
+        shader::Shader::Make("vertex.glsl", "fragment.glsl")
+    );
+```
+
+**Priority:** 200
+
+**Lifecycle Methods:**
+- `apply()` - Pushes shader onto shader stack (used during scene traversal)
+- `unapply()` - Pops shader from stack (used during scene traversal)
+
+
+**TextureComponent**
+
+Binds a texture to a specific texture unit and registers the sampler name.
+
+```cpp
+// Create inline during scene building
+scene::graph()->addNode("TexturedObject")
+    .with<component::TextureComponent>(
+        texture::Texture::Make("path/to/texture.png"),
+        "u_texture",  // sampler name in shader
+        0             // texture unit
+    );
+```
+
+**Priority:** 300
+
+**Lifecycle Methods:**
+- `apply()` - Binds texture and registers sampler (used during scene traversal)
+- `unapply()` - Unbinds texture and unregisters sampler (used during scene traversal)
+
+**MaterialComponent**
+
+Pushes material properties onto the material stack for hierarchical property inheritance.
+
+```cpp
+// Create inline during scene building
+scene::graph()->addNode("RedObject")
+    .with<component::MaterialComponent>(
+        material::Material::Make(glm::vec3(0.8f, 0.2f, 0.2f))
+            ->setSpecular(glm::vec3(1.0f))
+            ->setShininess(32.0f)
+    );
+```
+
+**Priority:** 300
+
+**Lifecycle Methods:**
+- `apply()` - Pushes material onto material stack (used during scene traversal)
+- `unapply()` - Pops material from stack (used during scene traversal)
+
+**LightComponent**
+
+Integrates lights into the scene graph with automatic transform inheritance. Inherits from `ObservedTransformComponent` to track world position.
+
+```cpp
+// Create inline during scene building
+scene::graph()->addNode("LightSource")
+    .with<component::LightComponent>(
+        light::PointLight::Make({
+            .position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+            .diffuse = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+            .constant = 1.0f,
+            .linear = 0.09f,
+            .quadratic = 0.032f
+        }),
+        transform::Transform::Make()  // local transform for the light
+    );
+```
+
+**Priority:** 600 (CUSTOM_SCRIPT)
+
+**Important Notes:**
+- Automatically registers with `LightManager` on creation
+- Automatically unregisters on destruction
+- Inherits from `ObservedTransformComponent` for efficient world transform tracking
+- No custom `apply()`/`unapply()` - uses inherited transform behavior
+
 
 ### Rendering System
 
-**Shader**
-Manages GLSL shader programs with a sophisticated 4-tier uniform system. Tier 1 (Global Resources): UBOs bound at link time, shared across shaders. Tier 2 (Static): Applied once when shader activates. Tier 3 (Dynamic): Applied every draw call via provider functions. Tier 4 (Immediate): Set directly, queued if shader inactive. Supports loading from files or raw strings. Implements "Just-in-Time" linking with the `Bake()` method that links the program and refreshes uniform locations. Validates uniform types against GLSL declarations.
+#### Shader
 
-**ShaderStack**
-Singleton managing active shader state with lazy activation. Maintains a stack of shaders and tracks the last used shader to prevent redundant `glUseProgram()` calls. The `top()` method activates the shader only if different from the last used one, then applies dynamic (Tier 3) uniforms. This means `top()` has side effects and should be called once per draw. The base shader (created on construction) cannot be popped, ensuring a valid shader is always available.
+Manages GLSL shader programs with a sophisticated 4-tier uniform system.
 
-**Geometry**
-Low-level wrapper for OpenGL vertex data. Encapsulates VAO, VBO, and EBO handles. Constructor takes vertex data, indices, position size, and additional attribute sizes (colors, UVs, normals). Automatically configures vertex attribute pointers based on the provided sizes. The `Draw()` method binds the VAO and calls `glDrawElements()`. Destructor automatically frees GPU resources. Supports any vertex layout via the flexible attribute size vector.
+**Creation:**
+```cpp
+// From files (automatic attach and link)
+auto shader = shader::Shader::Make("vertex.glsl", "fragment.glsl");
 
-**Transform**
-Represents a 4x4 transformation matrix with chainable operations. Implements the observer pattern via `ISubject` - notifies observers when the matrix changes. Provides methods like `translate()`, `rotate()`, `scale()`, `multiply()`, and their "set" variants (which reset first). All modification methods call `notify()` to alert observers. Factory method `Make()` creates shared pointers. Used by TransformComponent to define local transformations.
+// From raw strings (automatic attach and link)
+auto shader = shader::Shader::Make(vertex_source, fragment_source);
 
-**TransformStack**
-Singleton managing hierarchical transformation accumulation. Stores accumulated matrices (not individual transforms). Each `push()` multiplies the incoming matrix with the current top and pushes the result. The `current()` function returns the top matrix, used by shaders as the model matrix. Cannot pop below the identity matrix at index 0. This design eliminates the need for matrix inversion during pop operations.
+// Manual attach (for more control)
+auto shader = shader::Shader::Make();
+shader->AttachVertexShader("vertex.glsl");    // or vertex_source string
+shader->AttachFragmentShader("fragment.glsl"); // or fragment_source string
+shader->Bake();  // Link program and bind resources
+```
 
-**Material**
-Data container for material properties stored as `std::variant<float, int, vec2, vec3, vec4, mat3, mat4>`. Provides type-safe `set<T>()` method and convenience methods for PBR properties (`setAmbient()`, `setDiffuse()`, `setSpecular()`, `setShininess()`). Supports uniform name remapping via `setUniformNameOverride()` for shader compatibility. Factory method `Make(vec3)` creates PBR materials from a base color. Properties are stored in a map for flexible querying.
+**4-Tier Uniform System:**
 
-**MaterialStack**
-Singleton managing hierarchical material property merging. Each level stores a complete merged property map (not individual materials). `push()` copies the current state and overwrites properties with matching names. Provides `getValue<T>()` for immediate access and `getProvider<T>()` for creating uniform provider functions. The `configureShaderDefaults()` method automatically binds all base state properties to a shader using dynamic uniforms. Cannot pop below the base PBR state at index 0.
+**Tier 1: Global Resources (UBOs/SSBOs)**
+- Bound at shader link time
+- Shared across multiple shaders
+- Updated once per frame or on-demand
 
-**Texture**
-Manages OpenGL 2D textures with automatic resource management. Uses STB Image for loading. Constructor loads image data, creates texture, configures wrapping/filtering, uploads to GPU, and generates mipmaps. Implements a static cache (`s_cache`) - multiple `Make()` calls with the same filename return the same texture instance, preventing duplicate GPU uploads. Provides `Bind()` and `Unbind()` methods for texture unit management. Destructor calls `glDeleteTextures()`.
+```cpp
+// Define your data structure (must match GLSL layout)
+struct MyCustomData {
+    glm::vec4 custom_color;
+    float custom_value;
+    float padding[3];  // Ensure proper alignment
+};
 
-**TextureStack**
-Singleton managing texture bindings across multiple units with intelligent GPU state tracking. Each level stores a complete map of `{unit -> texture}` bindings. Tracks actual GPU state in `m_active_gpu_state` to prevent redundant `glBindTexture()` calls. `push()` only binds if the GPU state differs. `pop()` intelligently restores the previous state, rebinding only changed units. Maintains `m_sampler_to_unit_map` for dynamic sampler-to-unit resolution used by shader uniforms.
+// Create and register a custom UBO using the UBO class
+auto my_ubo = uniform::UBO<MyCustomData>::Make(
+    "MyCustomUBO",                   // unique name
+    uniform::UpdateMode::PER_FRAME,  // update frequency
+    3                                // binding point
+);
 
----
+// Set a provider function that returns the data
+my_ubo->setProvider([]() {
+    MyCustomData data;
+    data.custom_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    data.custom_value = 42.0f;
+    return data;
+});
+
+// Or use partial provider for updating only specific regions
+my_ubo->setPartialProvider([](MyCustomData& data) {
+    data.custom_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    data.custom_value = 42.0f;
+    // Return the dirty region that was modified
+    return uniform::DirtyRegion{0, sizeof(MyCustomData)};
+});
+
+// Bind UBO to shader at link time
+shader->addResourceBlockToBind("MyCustomUBO");
+shader->Bake();  // Links and binds the UBO
+
+// The UBO will automatically update based on UpdateMode
+// PER_FRAME: Updated every frame by the manager
+// ON_DEMAND: Call uniform::manager().applyShaderResource("MyCustomUBO") manually
+```
+
+**Tier 2: Static Uniforms**
+- Applied when shader becomes active
+- For values that don't change during shader use
+
+```cpp
+// For constant values
+shader->configureStaticUniform<int>("u_enableLighting", []() { return 1; });
+shader->configureStaticUniform<float>("u_gamma", []() { return 2.2f; });
+```
+
+**Tier 3: Dynamic Uniforms**
+- Applied every draw call via provider functions
+- For frequently changing values
+
+```cpp
+// Model matrix from transform stack
+shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
+
+// Material properties
+shader->configureDynamicUniform<glm::vec3>("u_material.ambient",
+    material::stack()->getProvider<glm::vec3>("ambient"));
+
+// Texture samplers
+shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture",
+    texture::getSamplerProvider("u_texture"));
+```
+
+**Tier 4: Immediate Uniforms**
+- Set directly for one-off values
+- Queued if shader inactive, applied immediately if active
+
+```cpp
+shader->setUniform<float>("u_time", elapsed_time);
+shader->setUniform<glm::vec3>("u_lightPos", light_position);
+```
+
+
+**Key Methods:**
+```cpp
+// Shader lifecycle
+void AttachVertexShader(const std::string& source);
+void AttachFragmentShader(const std::string& source);
+void Bake();  // Link program and refresh uniform locations
+void UseProgram();  // Activate shader
+
+// Uniform configuration
+template<typename T>
+void configureStaticUniform(const std::string& name, std::function<T()> provider);
+
+template<typename T>
+void configureDynamicUniform(const std::string& name, std::function<T()> provider);
+
+template<typename T>
+void setUniform(const std::string& name, const T& value);
+
+// Resource binding
+void addResourceBlockToBind(const std::string& block_name);
+```
+
+**Important Considerations:**
+
+- **Baking Required:** Call `Bake()` after attaching shaders or modifying resource bindings
+- **Uniform Locations:** Automatically refreshed on `Bake()` - don't cache locations manually
+- **Type Safety:** Shader validates uniform types against GLSL declarations
+- **Provider Functions:** Dynamic uniforms use provider functions called each frame for fresh values
+
+
+#### ShaderStack
+
+Singleton managing active shader state with lazy activation.
+
+**Access:**
+```cpp
+shader::stack()  // Returns pointer to singleton instance
+```
+
+**Key Methods:**
+```cpp
+void push(ShaderPtr shader);  // Add shader to stack (doesn't activate)
+ShaderPtr top();              // Activate and return current shader
+ShaderPtr peek();             // Return current shader without activating
+void pop();                   // Remove top shader
+```
+
+**Important Considerations:**
+
+- **Lazy Activation:** `push()` does NOT activate the shader - only `top()` does
+- **Side Effects:** `top()` has side effects - it activates the shader and applies dynamic uniforms
+- **Call Once Per Draw:** Call `top()` once per draw, not multiple times
+- **Use peek() for Inspection:** Use `peek()` when you need to inspect the shader without triggering activation
+- **Protected Base:** Cannot pop the base shader - ensures a valid shader is always available
+
+**Example:**
+```cpp
+// Push custom shader for a subtree
+shader::stack()->push(custom_shader);
+
+// Activate and get shader (applies uniforms)
+auto active = shader::stack()->top();
+
+// Draw geometry...
+
+// Restore previous shader
+shader::stack()->pop();
+```
+
+
+#### Geometry
+
+Low-level wrapper for OpenGL vertex data (VAO/VBO/EBO).
+
+**Creation:**
+```cpp
+// Geometry::Make(vertex_data, index_data, num_vertices, num_indices, 
+//                position_size, {additional_attribute_sizes})
+auto geometry = geometry::Geometry::Make(
+    vertex_data,           // float* - interleaved vertex data
+    index_data,            // unsigned int* - element indices
+    num_vertices,          // int - number of vertices
+    num_indices,           // int - number of indices
+    position_size,         // int - floats per position (typically 3 for x,y,z)
+    {attr1_size, attr2_size}  // vector<int> - floats per additional attribute
+);
+```
+
+**Example:**
+```cpp
+// Triangle with positions (3 floats) and colors (3 floats)
+std::vector<float> vertices = {
+    // positions        // colors
+    0.0f,  0.5f, 0.0f,  1.0f, 0.0f, 0.0f,  // top (red)
+   -0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f,  // bottom-left (green)
+    0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f   // bottom-right (blue)
+};
+std::vector<unsigned int> indices = {0, 1, 2};
+
+auto triangle = geometry::Geometry::Make(
+    vertices.data(), indices.data(),
+    3, 3,  // 3 vertices, 3 indices
+    3,     // position: 3 floats (x, y, z)
+    {3}    // color: 3 floats (r, g, b)
+);
+
+// Quad with positions (3 floats), UVs (2 floats), and normals (3 floats)
+auto quad = geometry::Geometry::Make(
+    quad_vertices.data(), quad_indices.data(),
+    4, 6,  // 4 vertices, 6 indices
+    3,     // position: 3 floats
+    {2, 3} // UV: 2 floats, normal: 3 floats
+);
+```
+
+**Key Methods:**
+```cpp
+void Draw();  // Bind VAO and call glDrawElements (used by GeometryComponent)
+```
+
+**Automatic Resource Management:**
+- VAO, VBO, and EBO are automatically freed in destructor
+- Vertex attribute pointers configured automatically based on sizes
+- Attribute 0 is always position, subsequent attributes follow in order
+
+
+#### Transform
+
+Represents a 4x4 transformation matrix with chainable operations and observer pattern support.
+
+**Creation:**
+```cpp
+auto transform = transform::Transform::Make();
+```
+
+**Chainable Operations:**
+```cpp
+// Modify existing transform (all methods return TransformPtr for chaining)
+transform->translate(1.0f, 0.0f, 0.0f)
+         ->rotate(45.0f, 0.0f, 0.0f, 1.0f)  // angle in DEGREES
+         ->scale(2.0f, 2.0f, 2.0f);
+
+// Reset and set operations (resets matrix first)
+transform->setTranslate(1.0f, 0.0f, 0.0f);
+transform->setRotate(45.0f, 0.0f, 0.0f, 1.0f);  // angle in DEGREES
+transform->setScale(2.0f, 2.0f, 2.0f);
+```
+
+**Key Methods:**
+```cpp
+TransformPtr translate(float x, float y, float z);
+TransformPtr rotate(float angle_degrees, float axis_x, float axis_y, float axis_z);
+TransformPtr scale(float x, float y, float z);
+TransformPtr multiply(const glm::mat4& matrix);
+
+TransformPtr setTranslate(float x, float y, float z);
+TransformPtr setRotate(float angle_degrees, float axis_x, float axis_y, float axis_z);
+TransformPtr setScale(float x, float y, float z);
+
+const glm::mat4& getMatrix() const;
+TransformPtr setMatrix(const glm::mat4& matrix);
+```
+
+**Important Notes:**
+- Rotation angles are in **degrees** (converted to radians internally)
+- All modification methods return `TransformPtr` for method chaining
+- Rotation axis is automatically normalized if needed
+
+**Observer Pattern:**
+- Implements `ISubject` interface
+- Notifies observers when matrix changes
+- Used by `ObservedTransformComponent` to cache world transforms
+
+
+#### TransformStack
+
+Singleton managing hierarchical transformation accumulation.
+
+**Access:**
+```cpp
+transform::stack()  // Returns pointer to singleton instance
+```
+
+**Key Methods:**
+```cpp
+void push(const glm::mat4& matrix);  // Multiply with current top and push
+glm::mat4 current();                 // Get current accumulated matrix
+void pop();                          // Remove top matrix
+```
+
+**Important Considerations:**
+
+- **Accumulation Behavior:** Stores accumulated matrices, not individual transforms
+- **Multiplication:** `push()` multiplies the incoming matrix with the current top: `new_state = current_top * incoming_matrix`
+- **No Inversion:** `pop()` simply removes the top level - no matrix inversion needed
+- **Protected Base:** Cannot pop below the identity matrix at index 0
+
+**Example:**
+```cpp
+// Push parent transform
+transform::stack()->push(parent_matrix);
+
+// Push child transform (accumulates with parent)
+transform::stack()->push(child_matrix);
+
+// Get final accumulated transform
+glm::mat4 final = transform::current();  // Returns: parent * child
+
+// Pop back to parent
+transform::stack()->pop();
+```
+
+**Usage in Shaders:**
+```cpp
+// Configure shader to use current transform as model matrix
+shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
+```
+
+
+#### Material
+
+Data container for material properties with type-safe storage.
+
+**Creation:**
+```cpp
+// Create from base color
+auto material = gl_base::Material::Make(glm::vec3(0.8f, 0.2f, 0.2f));
+
+// Create empty and set properties
+auto material = gl_base::Material::Make()
+    ->setAmbient(glm::vec3(0.2f))
+    ->setDiffuse(glm::vec3(0.8f, 0.2f, 0.2f))
+    ->setSpecular(glm::vec3(1.0f))
+    ->setShininess(32.0f);
+```
+
+**Key Methods:**
+```cpp
+// PBR convenience methods
+Material* setAmbient(const glm::vec3& ambient);
+Material* setDiffuse(const glm::vec3& diffuse);
+Material* setSpecular(const glm::vec3& specular);
+Material* setShininess(float shininess);
+
+// Generic property setting
+template<typename T>
+Material* set(const std::string& name, const T& value);
+
+// Uniform name remapping
+Material* setUniformNameOverride(const std::string& property, const std::string& uniform_name);
+```
+
+**Supported Types:**
+- `float`, `int`
+- `glm::vec2`, `glm::vec3`, `glm::vec4`
+- `glm::mat3`, `glm::mat4`
+
+**Example:**
+```cpp
+auto material = gl_base::Material::Make(glm::vec3(0.8f, 0.2f, 0.2f))
+    ->setSpecular(glm::vec3(1.0f))
+    ->setShininess(32.0f)
+    ->set<float>("roughness", 0.5f)
+    ->set<float>("metallic", 0.0f);
+```
+
+
+#### MaterialStack
+
+Singleton managing hierarchical material property merging.
+
+**Access:**
+```cpp
+material::stack()  // Returns pointer to singleton instance
+```
+
+**Key Methods:**
+```cpp
+void push(std::shared_ptr<Material> material);  // Merge and push
+void pop();                                     // Remove top level
+
+// Get property value
+template<typename T>
+T getValue(const std::string& name);
+
+// Get provider function for shader uniforms
+template<typename T>
+std::function<T()> getProvider(const std::string& name);
+
+// Configure shader with all base properties
+void configureShaderDefaults(ShaderPtr shader);
+```
+
+**Important Considerations:**
+
+- **Property Merging:** Each level stores a complete merged property map
+- **Override Behavior:** Child properties completely override parent properties with matching names (not additive)
+- **Provider Pattern:** Use `getProvider<T>()` for dynamic uniform binding
+- **Protected Base:** Cannot pop below the base PBR state at index 0
+
+**Example:**
+```cpp
+// Base material for all objects
+auto base = gl_base::Material::Make(glm::vec3(0.8f));
+material::stack()->push(base);
+
+// Override specific properties for a subtree
+auto shiny = gl_base::Material::Make()->setSpecular(glm::vec3(1.0f));
+material::stack()->push(shiny);
+// Now: ambient and diffuse inherited, specular overridden
+
+// Render shiny objects...
+
+material::stack()->pop();  // Restore base material
+```
+
+
+#### Texture
+
+Manages OpenGL 2D textures with automatic resource management and caching.
+
+**Creation:**
+```cpp
+// Load from file (uses STB Image)
+auto texture = texture::Texture::Make("path/to/texture.png");
+```
+
+**Key Methods:**
+```cpp
+void Bind(unsigned int unit);    // Bind to texture unit
+void Unbind(unsigned int unit);  // Unbind from texture unit
+unsigned int GetID() const;      // Get OpenGL texture ID
+```
+
+**Automatic Caching:**
+- Static cache prevents duplicate GPU uploads
+- Multiple `Make()` calls with the same filename return the same texture instance
+- Textures are freed when the last reference is destroyed
+
+**Example:**
+```cpp
+// Load texture (cached automatically)
+auto texture = texture::Texture::Make("assets/wood.png");
+
+// Use with TextureComponent
+node.with<component::TextureComponent>(texture, "u_texture", 0);
+```
+
+**Supported Formats:**
+- PNG, JPG, BMP, TGA, and other formats supported by STB Image
+- Automatically generates mipmaps
+- Configurable wrapping and filtering (defaults: repeat wrapping, linear filtering)
+
+
+#### TextureStack
+
+Singleton managing texture bindings across multiple texture units with intelligent GPU state tracking.
+
+**Access:**
+```cpp
+texture::stack()  // Returns pointer to singleton instance
+```
+
+**Key Methods:**
+```cpp
+void push(TexturePtr texture, unsigned int unit);  // Bind and push
+void pop();                                        // Restore previous state
+
+// Sampler registration (used by TextureComponent)
+void registerSampler(const std::string& sampler_name, unsigned int unit);
+void unregisterSampler(const std::string& sampler_name);
+
+// Get sampler provider for shader uniforms
+std::function<uniform::detail::Sampler2D()> getSamplerProvider(const std::string& sampler_name);
+```
+
+**Important Considerations:**
+
+- **Complete State Storage:** Each level stores a map of `{unit -> texture}` for all active units
+- **GPU State Tracking:** Tracks actual GPU state to prevent redundant `glBindTexture()` calls
+- **Intelligent Restoration:** `pop()` only rebinds changed texture units
+- **Unit vs ID Confusion:** Texture units (0-31) are different from texture IDs (OpenGL handles)
+- **Protected Base:** Cannot pop below the empty base state at index 0
+
+**Example:**
+```cpp
+// Bind multiple textures
+texture::stack()->push(diffuse_tex, 0);
+texture::stack()->push(normal_tex, 1);
+texture::stack()->push(specular_tex, 2);
+
+// Render objects with all three textures...
+
+// Restore previous state
+texture::stack()->pop();  // Removes specular
+texture::stack()->pop();  // Removes normal
+texture::stack()->pop();  // Removes diffuse
+```
+
 
 ### Lighting System
 
-**Light**
-Abstract base class for all light types. Stores common properties (ambient, diffuse, specular colors) and provides the pure virtual method `getType()` for runtime type identification. Provides getter methods for accessing color properties: `getAmbient()`, `getDiffuse()`, `getSpecular()`. Lights are created using designated initializer syntax with parameter structs (`LightParams`, `DirectionalLightParams`, etc.) for clarity. Subclasses implement specific light behaviors (directional, point, spot). The Light class itself does not handle GPU data conversion - this is done by the LightManager.
+#### Light Types
 
-**DirectionalLight**
-Represents infinite-distance lights (like the sun). Stores a `base_direction` vector in local space that gets transformed to world space by the LightManager using the LightComponent's world transform. No attenuation since the light is infinitely far away. Provides `getBaseDirection()` to access the local-space direction. Created via `DirectionalLight::Make(DirectionalLightParams)`. Useful for outdoor scenes and global illumination.
+**Light (Base Class)**
 
-**PointLight**
-Omnidirectional light with position and attenuation. Stores `position` (as vec4 with w=1) in local space and attenuation coefficients (constant, linear, quadratic). Light intensity falls off with distance according to the formula: `1.0 / (constant + linear * d + quadratic * d²)`. Provides getters: `getPosition()`, `getConstant()`, `getLinear()`, `getQuadratic()`. The LightManager transforms the position to world space. Created via `PointLight::Make(PointLightParams)`. Useful for lamps, torches, and localized lighting.
-
-**SpotLight**
-Cone-shaped light inheriting from PointLight. Adds `base_direction` (local space) and `cutOffAngle` (stored as cosine for efficient GPU comparison). Combines point light attenuation with directional constraints. Light intensity is full within the cone and zero outside. Provides `getBaseDirection()` and `getCutoffAngle()`. The LightManager transforms both position and direction to world space. Created via `SpotLight::Make(SpotLightParams)`. Useful for flashlights, stage lights, and focused illumination.
-
-**LightManager**
-Templated singleton (`LightManagerImpl<MAX_LIGHTS>`) collecting all active lights and uploading them to a GPU UBO. Maintains a registry of `LightComponent` pointers. The `registerLight()` and `unregisterLight()` methods are called automatically by LightComponent's constructor/destructor. The `apply()` method iterates all registered components, extracts light data using getters, applies world transforms from the component's cached world matrix, packs data into a `SceneLights<MAX_LIGHTS>` structure, and triggers GPU upload via `uniform::manager().applyShaderResource()`. Uses `dynamic_cast` to determine light types at runtime. Supports up to `MAX_SCENE_LIGHTS` (configurable via `light_config.h`, default 16) simultaneous lights. Provides `bindToShader()` to register the "SceneLights" UBO with shaders.
-
-**Customizing Maximum Lights:**
-To change the maximum number of lights supported, define `MAX_SCENE_LIGHTS` before including EnGene headers:
+Abstract base class for all light types with common properties.
 
 ```cpp
-// In your main.cpp or project header
-#define MAX_SCENE_LIGHTS 32  // Increase to 32 lights
-#include <EnGene.h>
-
-// Rest of your code...
+// Common properties
+glm::vec4 ambient;   // Ambient color contribution
+glm::vec4 diffuse;   // Diffuse color contribution
+glm::vec4 specular;  // Specular color contribution
 ```
 
-You must also update your GLSL shader to match:
+**DirectionalLight**
+
+Represents infinite-distance lights (like the sun).
+
+```cpp
+auto sun = light::DirectionalLight::Make({
+    .base_direction = glm::vec3(0.0f, -1.0f, 0.0f),
+    .ambient = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+    .diffuse = glm::vec4(1.0f, 0.9f, 0.7f, 1.0f),
+    .specular = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+});
+```
+
+**PointLight**
+
+Omnidirectional light with position and attenuation.
+
+```cpp
+auto lamp = light::PointLight::Make({
+    .position = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f),
+    .ambient = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+    .diffuse = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+    .specular = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+    .constant = 1.0f,
+    .linear = 0.09f,
+    .quadratic = 0.032f
+});
+```
+
+Attenuation formula: `1.0 / (constant + linear * d + quadratic * d²)`
+
+**SpotLight**
+
+Cone-shaped light (inherits from PointLight).
+
+```cpp
+auto flashlight = light::SpotLight::Make({
+    .position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+    .base_direction = glm::vec3(0.0f, 0.0f, -1.0f),
+    .cutOffAngle = glm::cos(glm::radians(12.5f)),
+    .diffuse = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+    .constant = 1.0f,
+    .linear = 0.09f,
+    .quadratic = 0.032f
+});
+```
+
+
+#### LightManager
+
+Templated singleton that collects all active lights and uploads them to a GPU UBO.
+
+**Access:**
+```cpp
+light::manager()  // Returns reference to singleton instance
+```
+
+**Key Methods:**
+```cpp
+void apply();  // Collect lights and upload to GPU
+void bindToShader(ShaderPtr shader);  // Register UBO with shader
+```
+
+**Automatic Registration:**
+- `LightComponent` automatically registers/unregisters lights
+- No manual registration needed in typical usage
+
+**Customizing Maximum Lights:**
+
+Default maximum is 16 lights. To change:
+
+```cpp
+// In your main.cpp BEFORE including EnGene
+#define MAX_SCENE_LIGHTS 32
+#include <EnGene.h>
+```
+
+**CRITICAL:** Must match GLSL shader definition exactly!
+
 ```glsl
 // In your shader
 #define MAX_SCENE_LIGHTS 32  // Must match C++ value
@@ -150,110 +1297,437 @@ layout (std140) uniform SceneLights {
 };
 ```
 
-**Important:** The C++ and GLSL values must match exactly, or you'll get rendering artifacts or crashes. Default is 16 lights. Increasing this value increases GPU memory usage proportionally (~112 bytes per light in the UBO).
+**Example:**
+```cpp
+// Bind light manager to shader during initialization
+auto shader = shader::Shader::Make("lit_vertex.glsl", "lit_fragment.glsl");
+light::manager().bindToShader(shader);
 
----
+// Lights are automatically collected and uploaded each frame
+```
+
+
+### Camera System
+
+#### Camera (Base Class)
+
+Abstract base class for all camera types.
+
+**Key Methods:**
+```cpp
+virtual glm::mat4 getViewMatrix() = 0;
+virtual glm::mat4 getProjectionMatrix() = 0;
+
+void setAspectRatio(float aspect);
+float getAspectRatio() const;
+
+void bindToShader(ShaderPtr shader);  // Register camera UBO with shader
+```
+
+**Automatic UBO Creation:**
+- Each camera creates a UBO for view and projection matrices
+- UBO is automatically updated when matrices change
+
+#### OrthographicCamera
+
+Orthographic projection camera (no perspective distortion).
+
+**Creation:**
+```cpp
+auto camera = component::OrthographicCamera::Make(
+    left, right, bottom, top, near, far
+);
+```
+
+**Example:**
+```cpp
+// 2D orthographic camera
+auto camera = component::OrthographicCamera::Make(
+    -10.0f, 10.0f,   // left, right
+    -10.0f, 10.0f,   // bottom, top
+    0.1f, 100.0f     // near, far
+);
+
+scene::graph()->setActiveCamera(camera);
+```
+
+#### PerspectiveCamera
+
+Perspective projection camera (realistic 3D perspective).
+
+**Creation:**
+```cpp
+auto camera = component::PerspectiveCamera::Make(
+    fov_degrees, near, far
+);
+```
+
+**Example:**
+```cpp
+// 3D perspective camera
+auto camera = component::PerspectiveCamera::Make(
+    45.0f,   // FOV in degrees
+    0.1f,    // Near plane
+    100.0f   // Far plane
+);
+
+// Set aspect ratio (width / height)
+camera->setAspectRatio(800.0f / 600.0f);
+
+scene::graph()->setActiveCamera(camera);
+```
+
+**Important Notes:**
+- FOV is specified in **degrees** (not radians)
+- Aspect ratio is **width / height** (e.g., 16/9 = 1.777...)
+- Inherits from `ObservedTransformComponent` for efficient world position tracking
+- Use `setTarget()` to make camera look at another ObservedTransformComponent
+
 
 ### Application Framework
 
-**EnGene**
-Main application class orchestrating the entire engine. Manages GLFW window, OpenGL context (4.3 Core), base shader, input handler, and the game loop. Constructor initializes all systems, creates a default camera, and binds it to the base shader. The `run()` method implements a fixed-timestep loop: accumulates time, runs `on_fixed_update` in fixed steps, calculates interpolation alpha, pushes base shader, applies per-frame UBOs, calls `on_render`, pops shader, swaps buffers. Prevents "spiral of death" with `maxFrameTime` cap. Non-copyable.
+#### EnGene
 
-**EnGeneConfig**
-Plain struct for engine configuration with sensible defaults. Fields: `width` (800), `height` (600), `title` ("EnGene Application"), `updatesPerSecond` (60), `maxFrameTime` (0.25), `clearColor` (black), `base_vertex_shader_source`, `base_fragment_shader_source`. All fields are optional - omitted fields use defaults. Supports both file paths and raw GLSL strings for shaders. Designed for aggregate initialization in C++20 or manual field assignment in C++17.
+Main application class that orchestrates the entire engine.
 
-**InputHandler**
-Manages GLFW input callbacks with type-safe registration. Supports keyboard, mouse button, mouse movement, and scroll callbacks. Uses template-based `registerCallback<InputType>()` method with predefined macros for callback signatures (e.g., `KEY_HANDLER_ARGS`). Callbacks are stored in maps and applied to the GLFW window via `applyCallbacks()`. Allows multiple callbacks per input type. Provides a clean abstraction over GLFW's C-style callback system.
+**Creation:**
+```cpp
+engene::EnGene(
+    std::function<void(EnGene&)> on_initialize,
+    std::function<void(double)> on_fixed_update,
+    std::function<void(double)> on_render,
+    EnGeneConfig config = {},
+    input::InputHandler* handler = nullptr
+);
+```
 
-## Design Patterns
+**Lifecycle Callbacks:**
 
-### 1. Entity-Component System (ECS)
-**Implementation:** Nodes act as entities, ComponentCollection as the component container, and components define behavior through `apply()`/`unapply()` methods.
+- **on_initialize(EnGene&)** - Called once before the main loop
+  - Receives engine reference for configuration
+  - Use for scene construction and setup
+  
+- **on_fixed_update(double dt)** - Called at fixed rate (default 60 Hz)
+  - Receives fixed timestep (e.g., 1/60 = 0.0166... seconds)
+  - Use for physics and simulation logic
+  
+- **on_render(double alpha)** - Called every frame
+  - Receives interpolation alpha (0.0-1.0) for smooth rendering
+  - Use for drawing and visual updates
 
-**Used in:**
-- SceneNode contains ComponentCollection as payload
-- All component types (TransformComponent, GeometryComponent, etc.)
-- ComponentCollection manages component lifecycle and retrieval
+**Key Methods:**
+```cpp
+void run();  // Start the main loop (blocks until window closes)
+ShaderPtr getBaseShader();  // Get base shader for configuration
+```
 
-### 2. Visitor Pattern
-**Implementation:** Nodes store pre/post-visit lambdas and execute them during traversal. The `visit()` method implements depth-first traversal with configurable actions.
+**Example:**
+```cpp
+auto on_initialize = [](engene::EnGene& app) {
+    // Build scene graph
+    scene::graph()->addNode("Root")
+        .with<component::GeometryComponent>(geometry);
+    
+    // Configure base shader if needed
+    auto shader = app.getBaseShader();
+    shader->setUniform<float>("u_time", 0.0f);
+};
 
-**Used in:**
-- Node<T>::visit() for scene graph traversal
-- SceneGraph::draw() initiates visitor traversal from root
-- Components use pre-visit for state setup (apply) and post-visit for cleanup (unapply)
+auto on_fixed_update = [](double dt) {
+    // Update physics at fixed 60 FPS
+    physics_engine->update(dt);
+};
 
-### 3. Builder Pattern
-**Implementation:** SceneNodeBuilder wraps a node and provides chainable methods that return `*this` or a new builder for children.
+auto on_render = [](double alpha) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    scene::graph()->draw();
+};
 
-**Used in:**
-- SceneNodeBuilder for declarative scene construction
-- Fluent API: `addNode().with<T>().with<T>().addNode()`
-- SceneGraph::addNode() and buildAt() return builders
+engene::EnGeneConfig config;
+config.title = "My Application";
+config.width = 1280;
+config.height = 720;
 
-### 4. Singleton Pattern (Meyers)
-**Implementation:** Private constructor, deleted copy/assignment, static instance returned by friend function. Thread-safe in C++11+.
+engene::EnGene app(on_initialize, on_fixed_update, on_render, config);
+app.run();
+```
 
-**Used in:**
-- SceneGraph via `scene::graph()`
-- ShaderStack via `shader::stack()`
-- TransformStack via `transform::stack()`
-- MaterialStack via `material::stack()`
-- TextureStack via `texture::stack()`
-- LightManager via `light::manager()`
-- GlobalResourceManager via `uniform::manager()`
 
-### 5. Strategy Pattern
-**Implementation:** Components encapsulate algorithms (behaviors) that can be swapped at runtime. The node delegates to components via polymorphic `apply()`/`unapply()` calls.
+#### EnGeneConfig
 
-**Used in:**
-- Component base class with virtual apply/unapply methods
-- Different component types implement different strategies
-- Nodes execute component strategies during traversal
+Configuration struct with sensible defaults.
 
-### 6. Observer Pattern
-**Implementation:** Transform implements ISubject with `notify()` method. ObservedTransformComponent implements IObserver with `onNotify()` callback. Subjects maintain observer lists.
+**Fields:**
+```cpp
+struct EnGeneConfig {
+    int width = 800;                    // Window width
+    int height = 600;                   // Window height
+    std::string title = "EnGene Window"; // Window title
+    int updatesPerSecond = 60;          // Fixed update frequency
+    double maxFrameTime = 0.25;         // Spiral of death prevention
+    float clearColor[4] = {0.1f, 0.1f, 0.1f, 1.0f};  // Background color
+    std::string base_vertex_shader_source;    // Vertex shader (file or raw GLSL)
+    std::string base_fragment_shader_source;  // Fragment shader (file or raw GLSL)
+};
+```
 
-**Used in:**
-- Transform notifies observers on matrix changes
-- ObservedTransformComponent observes transforms to cache world matrices
-- LightComponent uses observation to track light positions/directions
+**Example:**
+```cpp
+engene::EnGeneConfig config;
+config.width = 1920;
+config.height = 1080;
+config.title = "My Game";
+config.updatesPerSecond = 120;  // 120 FPS fixed updates
+config.clearColor[0] = 0.2f;    // Darker background
+config.clearColor[1] = 0.2f;
+config.clearColor[2] = 0.2f;
 
-### 7. Factory Pattern (Static Factory Method)
-**Implementation:** Private/protected constructors with public static `Make()` methods that return shared pointers. Enables controlled object creation and initialization.
+// Use custom shaders
+config.base_vertex_shader_source = "shaders/my_vertex.glsl";
+config.base_fragment_shader_source = "shaders/my_fragment.glsl";
+```
 
-**Used in:**
-- All major classes: `Shader::Make()`, `Transform::Make()`, `Material::Make()`
-- Component creation: `TransformComponent::Make()`
-- Geometry and shape creation
-- Ensures proper shared_ptr usage and initialization
+**Default Shaders:**
+- If shader sources are not specified, EnGene uses built-in default shaders
+- Default shaders include camera UBO binding and basic vertex color pass-through
 
-### 8. Stack Pattern (Hierarchical State Machine)
-**Implementation:** Vector-based stacks with push/pop operations. Each level stores accumulated or merged state. Protected base level prevents underflow.
 
-**Used in:**
-- TransformStack for matrix accumulation
-- ShaderStack for shader state management
-- MaterialStack for property merging
-- TextureStack for texture unit bindings
+#### InputHandler
 
-### 9. Resource Sharing (UBO Pattern)
-**Implementation:** Uniform Buffer Objects store data shared across multiple shaders. Bound to binding points at link time, updated once per frame.
+Type-safe GLFW input callback management.
 
-**Used in:**
-- Camera matrices (view/projection) shared by all shaders
-- Scene lights array shared by lit shaders
-- GlobalResourceManager coordinates UBO bindings
-- Tier 1 uniforms in the 4-tier system
+**Creation:**
+```cpp
+auto handler = std::make_unique<input::InputHandler>();
+```
 
-### 10. Priority-Based Execution
-**Implementation:** Components have numeric priorities. ComponentCollection sorts by priority and executes in order during apply, reverse order during unapply.
+**Register Callbacks:**
+```cpp
+// Keyboard callback
+handler->registerCallback<input::InputType::KEY>(
+    [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+            glfwSetWindowShouldClose(window, true);
+        }
+    }
+);
 
-**Used in:**
-- Component execution order: Transform (100) → Shader (200) → Material (300) → Camera (400) → Geometry (500)
-- Ensures transforms are set before drawing
-- Ensures shaders are bound before materials
-- Custom priorities allow fine-grained control
+// Mouse button callback
+handler->registerCallback<input::InputType::MOUSE_BUTTON>(
+    [](GLFWwindow* window, int button, int action, int mods) {
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+            // Handle left click
+        }
+    }
+);
+
+// Mouse movement callback
+handler->registerCallback<input::InputType::MOUSE_MOVE>(
+    [](GLFWwindow* window, double xpos, double ypos) {
+        // Handle mouse movement
+    }
+);
+
+// Scroll callback
+handler->registerCallback<input::InputType::SCROLL>(
+    [](GLFWwindow* window, double xoffset, double yoffset) {
+        // Handle scroll
+    }
+);
+```
+
+**Example:**
+```cpp
+auto handler = std::make_unique<input::InputHandler>();
+
+handler->registerCallback<input::InputType::KEY>(
+    [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+        if (action == GLFW_PRESS) {
+            switch (key) {
+                case GLFW_KEY_W: /* Move forward */ break;
+                case GLFW_KEY_S: /* Move backward */ break;
+                case GLFW_KEY_A: /* Move left */ break;
+                case GLFW_KEY_D: /* Move right */ break;
+            }
+        }
+    }
+);
+
+engene::EnGene app(on_init, on_update, on_render, config, handler.release());
+```
+
+
+---
+
+## Advanced Topics
+
+### Understanding Stack Systems
+
+EnGene uses several stack-based systems for managing hierarchical state. Each stack has unique behaviors.
+
+#### ShaderStack Cautions
+
+**Important:** `top()` has side effects!
+
+- `push()` adds shader to stack but does NOT activate it
+- `top()` activates the shader AND applies dynamic uniforms
+- Call `top()` once per draw, not multiple times
+- Use `peek()` for inspection without activation
+
+**Lazy Activation:**
+The shader isn't actually bound until `top()` is called. This prevents redundant `glUseProgram()` calls.
+
+```cpp
+shader::stack()->push(custom_shader);  // NOT active yet
+auto active = shader::stack()->top();  // NOW active + uniforms applied
+```
+
+#### TransformStack Cautions
+
+**Important:** Stores accumulated matrices, not individual transforms!
+
+- Each level contains the product of all parent transforms
+- `push()` multiplies: `new_state = current_top * incoming_matrix`
+- You cannot "peek" at individual transform components
+- `pop()` simply removes the top (no matrix inversion)
+
+```cpp
+transform::stack()->push(parent);     // [identity * parent]
+transform::stack()->push(child);      // [identity * parent, parent * child]
+glm::mat4 final = transform::current(); // Returns: parent * child
+```
+
+
+#### TextureStack Cautions
+
+**Important:** Texture units vs texture IDs!
+
+- Texture units (0-31) are binding points, not texture IDs
+- Each level stores a complete map of `{unit -> texture}`
+- GPU state is tracked to prevent redundant binds
+- `pop()` intelligently restores only changed units
+
+**Sampler Registration:**
+TextureComponent registers sampler names during `apply()` and unregisters during `unapply()`. Use `texture::getSamplerProvider()` for dynamic uniform binding.
+
+```cpp
+// Correct: Use texture unit
+texture::stack()->push(texture, 0);  // Unit 0
+
+// Incorrect: Don't use texture ID
+// texture::stack()->push(texture, texture->GetID());  // WRONG!
+```
+
+#### MaterialStack Cautions
+
+**Important:** Properties override, not add!
+
+- Child materials completely override parent properties with matching names
+- Not additive like transform multiplication
+- Each level stores a complete merged property map
+- Use unique names to avoid unintended overrides
+
+```cpp
+auto base = Material::Make()->setDiffuse(glm::vec3(1.0, 0.0, 0.0));
+material::stack()->push(base);
+
+auto override = Material::Make()->setDiffuse(glm::vec3(0.0, 1.0, 0.0));
+material::stack()->push(override);
+// Diffuse is now green, not red+green
+```
+
+
+### Component Priority System
+
+**Important:** Components are automatically sorted by priority!
+
+Components execute in priority order during `apply()` and reverse order during `unapply()`. The order you add components to a node doesn't matter - they're automatically sorted by their priority values.
+
+**Standard Priorities:**
+- **100** - Transform (applied first)
+- **200** - Shader (shader selection)
+- **300** - Material/Texture (appearance setup)
+- **400** - Camera (view/projection)
+- **500** - Geometry (drawing, applied last)
+- **600+** - Custom scripts
+
+**Declaration Order Doesn't Matter:**
+```cpp
+// These are equivalent - components are sorted by priority automatically
+node.with<component::GeometryComponent>(geometry)      // Priority 500
+    .with<component::TransformComponent>(transform);   // Priority 100
+// Result: Transform (100) applies first, then Geometry (500)
+
+// Same result:
+node.with<component::TransformComponent>(transform)    // Priority 100
+    .with<component::GeometryComponent>(geometry);     // Priority 500
+// Result: Transform (100) applies first, then Geometry (500)
+```
+
+**Custom Priorities:**
+If you need specific ordering, you can override the default priority:
+```cpp
+node.with<component::TransformComponent>(transform, 150);  // Custom priority
+```
+
+### Uniform System Best Practices
+
+**Tier 1 (UBOs)** - Use for data shared across shaders
+- Camera matrices (view, projection)
+- Scene lights array
+- Global parameters
+
+**Tier 2 (Static)** - Use for per-shader constants
+- Texture unit assignments
+- Shader configuration flags
+
+**Tier 3 (Dynamic)** - Use for per-draw values
+- Model matrix (from transform stack)
+- Material properties (from material stack)
+- Texture samplers (from texture stack)
+
+**Tier 4 (Immediate)** - Use for one-off values
+- Time
+- Custom parameters
+- Debug values
+
+
+### Uniform Location Invalidation
+
+**Important:** Uniform locations become invalid after shader re-linking!
+
+- `Bake()` links the shader program and refreshes all uniform locations
+- Don't cache uniform locations manually
+- The shader class handles this automatically
+
+```cpp
+shader->AttachVertexShader(new_vertex_source);
+shader->Bake();  // Re-links and refreshes uniform locations
+```
+
+### Light Count Configuration
+
+**Important:** C++ and GLSL values must match exactly!
+
+```cpp
+// C++ side (before including EnGene.h)
+#define MAX_SCENE_LIGHTS 32
+#include <EnGene.h>
+```
+
+```glsl
+// GLSL side (must match!)
+#define MAX_SCENE_LIGHTS 32
+
+layout (std140) uniform SceneLights {
+    LightData lights[MAX_SCENE_LIGHTS];
+    int active_light_count;
+};
+```
+
+Mismatch causes rendering artifacts or crashes.
+
+---
 
 ## Project Structure
 
@@ -261,484 +1735,303 @@ Manages GLFW input callbacks with type-safe registration. Supports keyboard, mou
 EnGene/
 ├── core_gene/
 │   ├── src/
-│   │   ├── EnGene.h                           # Main engine class
-│   │   ├── core/
-│   │   │   ├── node.h                         # Generic tree node
-│   │   │   ├── scene.h                        # Scene graph singleton
-│   │   │   ├── scene_node_builder.h           # Fluent builder API
-│   │   │   └── EnGene_config.h                # Configuration struct
-│   │   ├── components/                        # ECS components
-│   │   │   ├── all.h                          # Include all components
-│   │   │   ├── component.h                    # Base component
-│   │   │   ├── component_collection.h         # Component container
-│   │   │   ├── transform_component.h          # Transform management
-│   │   │   ├── observed_transform_component.h # Transform with observer
-│   │   │   ├── geometry_component.h           # Geometry wrapper
-│   │   │   ├── shader_component.h             # Shader override
-│   │   │   ├── texture_component.h            # Texture binding
-│   │   │   ├── material_component.h           # Material properties
-│   │   │   └── light_component.h              # Light integration
-│   │   ├── gl_base/                           # OpenGL abstractions
-│   │   │   ├── gl_includes.h                  # OpenGL headers
-│   │   │   ├── error.h                        # Error handling
-│   │   │   ├── shader.h                       # Shader with 4-tier uniforms
-│   │   │   ├── i_shader.h                     # Shader interface
-│   │   │   ├── geometry.h                     # VAO/VBO/EBO wrapper
-│   │   │   ├── transform.h                    # Matrix operations
-│   │   │   ├── material.h                     # Material properties
-│   │   │   ├── texture.h                      # Texture management
-│   │   │   ├── input_handler.h                # Input callback system
-│   │   │   └── uniforms/                      # Uniform system
-│   │   │       ├── uniform.h                  # Base uniform
-│   │   │       ├── ubo.h                      # Uniform Buffer Objects
-│   │   │       ├── array_ssbo.h               # Array Shader Storage
-│   │   │       ├── struct_ssbo.h              # Struct Shader Storage
-│   │   │       ├── struct_resource.h          # Struct resource base
-│   │   │       ├── shader_resource.h          # Resource interface
-│   │   │       ├── global_resource_manager.h  # Resource manager
-│   │   │       └── pending_uniform_command.h  # Deferred uniform setting
+│   │   ├── EnGene.h                    # Main engine class
+│   │   ├── core/                       # Scene graph core
+│   │   │   ├── node.h
+│   │   │   ├── scene.h
+│   │   │   ├── scene_node_builder.h
+│   │   │   └── EnGene_config.h
+│   │   ├── components/                 # ECS components
+│   │   │   ├── component.h
+│   │   │   ├── component_collection.h
+│   │   │   ├── transform_component.h
+│   │   │   ├── geometry_component.h
+│   │   │   ├── shader_component.h
+│   │   │   ├── texture_component.h
+│   │   │   ├── material_component.h
+│   │   │   └── light_component.h
+│   │   ├── gl_base/                    # OpenGL abstractions
+│   │   │   ├── shader.h
+│   │   │   ├── geometry.h
+│   │   │   ├── transform.h
+│   │   │   ├── material.h
+│   │   │   ├── texture.h
+│   │   │   └── uniforms/               # Uniform system
 │   │   ├── 3d/
-│   │   │   ├── camera/                        # Camera implementations
-│   │   │   │   ├── camera.h                   # Abstract camera base
-│   │   │   │   ├── camera3d.h                 # 3D camera base
-│   │   │   │   ├── orthographic_camera.h      # Orthographic projection
-│   │   │   │   └── perspective_camera.h       # Perspective projection
-│   │   │   └── lights/                        # Light types & manager
-│   │   │       ├── light.h                    # Abstract light base
-│   │   │       ├── directional_light.h        # Directional light
-│   │   │       ├── point_light.h              # Point light
-│   │   │       ├── spot_light.h               # Spot light
-│   │   │       ├── light_config.h             # Light configuration
-│   │   │       ├── light_data.h               # Light data structures
-│   │   │       └── light_manager.h            # Light collection & UBO
-│   │   ├── other_genes/                       # Prebuilt shapes & utilities
-│   │   │   ├── grid.h                         # Grid helper
-│   │   │   ├── shapes/                        # 2D shapes
-│   │   │   │   ├── circle.h                   # Circle geometry
-│   │   │   │   └── polygon.h                  # Polygon geometry
-│   │   │   ├── textured_shapes/               # Textured 2D shapes
-│   │   │   │   ├── quad.h                     # Textured quad
-│   │   │   │   └── textured_circle.h          # Textured circle
-│   │   │   ├── 3d_shapes/                     # 3D shapes
-│   │   │   │   ├── cube.h                     # Cube geometry
-│   │   │   │   ├── sphere.h                   # Sphere geometry
-│   │   │   │   └── cylinder.h                 # Cylinder geometry
-│   │   │   └── input_handlers/                # Input handler presets
-│   │   │       ├── basic_input_handler.h      # Basic input
-│   │   │       ├── arcball_controller.h       # Arcball camera control
-│   │   │       └── arcball_input_handler.h    # Arcball input handler
-│   │   ├── utils/
-│   │   │   └── observer_interface.h           # Observer pattern interface
-│   │   └── exceptions/                        # Custom exceptions
-│   │       ├── base_exception.h               # Base exception
-│   │       ├── shader_exception.h             # Shader errors
-│   │       └── node_not_found_exception.h     # Scene graph errors
-│   ├── shaders/                               # GLSL shader files
-│   │   ├── vertex.glsl                        # Basic vertex shader
-│   │   ├── fragment.glsl                      # Basic fragment shader
-│   │   ├── textured_vertex.glsl               # Textured vertex shader
-│   │   ├── textured_fragment.glsl             # Textured fragment shader
-│   │   ├── lit_vertex.glsl                    # Lit vertex shader
-│   │   ├── lit_fragment.glsl                  # Lit fragment shader
-│   │   ├── lit_vertex2.glsl                   # Alt lit vertex shader
-│   │   └── lit_fragment2.glsl                 # Alt lit fragment shader
-│   ├── example_main.cpp                       # Solar system demo with lighting
-│   ├── working_example_main.cpp               # Physics simulation demo
-│   └── debug_main.cpp                         # Debug/testing main
-├── libs/                                      # External libraries (GLFW, GLAD, GLM, STB)
-│   └── .gitkeep
-├── build/                                     # Build output directory
-│   └── .gitkeep
-├── CMakeLists.txt                             # CMake build configuration
-├── .gitignore                                 # Git ignore rules
-└── README.md                                  # This file
+│   │   │   ├── camera/                 # Camera implementations
+│   │   │   └── lights/                 # Light types & manager
+│   │   └── other_genes/                # Prebuilt shapes & utilities
+│   │       ├── shapes/                 # 2D shapes
+│   │       ├── textured_shapes/        # Textured 2D shapes
+│   │       ├── 3d_shapes/              # 3D shapes
+│   │       └── input_handlers/         # Input handler presets
+│   └── shaders/                        # GLSL shader files
+├── libs/                               # External libraries
+└── CMakeLists.txt                      # CMake configuration
 ```
 
-## Key Features
 
-### Declarative Scene Building
-Build complex scene hierarchies using an intuitive fluent API that reads like natural language:
-```cpp
-scene::graph()->addNode("Sun")
-    .with<component::TransformComponent>(sun_transform)
-    .with<component::GeometryComponent>(circle_geometry)
-    .addNode("Earth")
-        .with<component::TransformComponent>(earth_orbit)
-        .with<component::TextureComponent>(earth_texture);
-```
-The builder pattern eliminates boilerplate and makes scene construction self-documenting.
+---
 
-### Component Priority System
-Components execute in a well-defined order based on priority values, ensuring correct rendering:
-- **Transform (100)** - Applied first to set up the model matrix
-- **Shader (200)** - Shader selection happens before appearance
-- **Material/Texture (300)** - Appearance properties configured
-- **Camera (400)** - View/projection setup
-- **Geometry (500)** - Drawing happens last
-- **Custom Scripts (600)** - User logic runs after rendering
+## Dependencies
 
-This eliminates common bugs where transforms are applied after geometry or shaders are bound in the wrong order.
+EnGene requires the following dependencies:
 
-### 4-Tier Uniform System
-Optimized GPU data management with four distinct uniform tiers:
+- **C++ Standard:** C++17 minimum (C++20 recommended)
+- **OpenGL:** 4.3 Core Profile
+- **GLFW** - Window and input management
+- **GLAD** - OpenGL function loader
+- **GLM** - Mathematics library for graphics
+- **STB Image** - Image loading (stb_image.h)
+- **Backtrace** (optional) - Debug stack traces and error reporting
 
-**Tier 1: Global Resources (UBOs)**
-- Bound once at shader link time
-- Shared across all shaders (camera matrices, scene lights)
-- Zero per-draw overhead
-```cpp
-// Automatically managed by Camera and LightManager
-uniform::UBO<CameraMatrices>::Make("CameraMatrices", ...);
+### Dependency Management
+
+All external dependencies are managed via the **CoreGene-deps** git submodule, which contains pre-configured libraries for Windows (MinGW), Linux, and macOS.
+
+**To initialize dependencies:**
+```bash
+# When cloning CoreGene for the first time
+git clone --recursive https://github.com/The-EnGene-Project/CoreGene.git
+
+# Or if you already cloned without --recursive
+git submodule update --init --recursive
 ```
 
-**Tier 2: Static Uniforms (Per-Use)**
-- Applied when shader becomes active
-- For values that don't change during shader use (texture units)
+The `libs/` directory is a git submodule pointing to [CoreGene-deps](https://github.com/The-EnGene-Project/CoreGene-deps.git), which contains:
+- `libs/glad/` - OpenGL function loader
+- `libs/glfw/` - Window management library
+- `libs/glm/` - Math library
+- `libs/stb/` - Image loading library
+- `libs/backtrace/` - Debug stack traces (optional)
+
+**Platform-Specific Notes:**
+- **Windows (MinGW):** Pre-built libraries included in `libs/glfw/lib-mingw-w64/` and `libs/backtrace/lib/`
+- **Linux:** You may prefer to use system packages (apt, yum) for GLFW and build from source
+- **macOS:** Use Homebrew for GLFW (`brew install glfw`) or use the provided libraries
+
+---
+
+## Examples
+
+### Solar System with Lighting
+
 ```cpp
-shader->configureStaticUniform<int>("tex", texture::getUnitProvider("tex"));
+#include <EnGene.h>
+#include "other_genes/3d_shapes/sphere.h"
+
+int main() {
+    auto on_initialize = [](engene::EnGene& app) {
+        // Build solar system with inline component creation
+        scene::graph()->addNode("Sun")
+            .with<component::TransformComponent>(
+                transform::Transform::Make()->scale(2.0f, 2.0f, 2.0f)
+            )
+            .with<component::LightComponent>(
+                light::PointLight::Make({
+                    .position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+                    .diffuse = glm::vec4(1.0f, 0.9f, 0.7f, 1.0f),
+                    .constant = 1.0f,
+                    .linear = 0.014f,
+                    .quadratic = 0.0007f
+                }),
+                transform::Transform::Make()
+            )
+            .with<component::MaterialComponent>(
+                material::Material::Make(glm::vec3(1.0f, 0.9f, 0.2f))
+            )
+            .with<component::GeometryComponent>(
+                Sphere::Make(1.0f, 32, 32)
+            )
+            .addNode("Earth")
+                .with<component::TransformComponent>(
+                    transform::Transform::Make()->translate(8.0f, 0.0f, 0.0f)
+                )
+                .with<component::MaterialComponent>(
+                    material::Material::Make(glm::vec3(0.2f, 0.4f, 0.8f))
+                )
+                .with<component::GeometryComponent>(
+                    Sphere::Make(0.8f, 24, 24)
+                )
+                .addNode("Moon")
+                    .with<component::TransformComponent>(
+                        transform::Transform::Make()->translate(2.0f, 0.0f, 0.0f)
+                    )
+                    .with<component::MaterialComponent>(
+                        material::Material::Make(glm::vec3(0.7f, 0.7f, 0.7f))
+                    )
+                    .with<component::GeometryComponent>(
+                        Sphere::Make(0.3f, 16, 16)
+                    );
+    };
+    
+    auto on_fixed_update = [](double dt) {
+        // Update orbital rotations
+        static float earth_angle = 0.0f;
+        earth_angle += dt * 20.0f;  // degrees per second
+        
+        auto earth = scene::graph()->findNode("Earth");
+        if (earth) {
+            auto transform = earth->payload().get<component::TransformComponent>();
+            if (transform) {
+                transform->getTransform()->setTranslate(
+                    8.0f * cos(glm::radians(earth_angle)),
+                    0.0f,
+                    8.0f * sin(glm::radians(earth_angle))
+                );
+            }
+        }
+    };
+    
+    auto on_render = [](double alpha) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        scene::graph()->draw();
+    };
+    
+    engene::EnGeneConfig config;
+    config.title = "Solar System";
+    
+    engene::EnGene app(on_initialize, on_fixed_update, on_render, config);
+    app.run();
+    
+    return 0;
+}
 ```
 
-**Tier 3: Dynamic Uniforms (Per-Draw)**
-- Applied every draw call via provider functions
-- For frequently changing values (model matrix, material properties)
+
+### Textured Quad
+
 ```cpp
-shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
+#include <EnGene.h>
+
+int main() {
+    auto on_initialize = [](engene::EnGene& app) {
+        // Create quad geometry with UVs
+        std::vector<float> vertices = {
+            // positions        // UVs
+           -0.5f, -0.5f, 0.0f,  0.0f, 0.0f,
+            0.5f, -0.5f, 0.0f,  1.0f, 0.0f,
+            0.5f,  0.5f, 0.0f,  1.0f, 1.0f,
+           -0.5f,  0.5f, 0.0f,  0.0f, 1.0f
+        };
+        std::vector<unsigned int> indices = {0, 1, 2, 2, 3, 0};
+        
+        // Build scene with inline component creation
+        scene::graph()->addNode("TexturedQuad")
+            .with<component::ShaderComponent>(
+                shader::Shader::Make("shaders/textured_vertex.glsl",
+                                    "shaders/textured_fragment.glsl")
+                    ->configureDynamicUniform<glm::mat4>("u_model", transform::current)
+                    ->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture",
+                        texture::getSamplerProvider("u_texture"))
+            )
+            .with<component::TextureComponent>(
+                texture::Texture::Make("assets/wood.png"),
+                "u_texture",
+                0  // texture unit
+            )
+            .with<component::GeometryComponent>(
+                geometry::Geometry::Make(
+                    vertices.data(), indices.data(),
+                    4, 6,  // 4 vertices, 6 indices
+                    3,     // position: 3 floats
+                    {2}    // UV: 2 floats
+                )
+            );
+    };
+    
+    auto on_fixed_update = [](double dt) {};
+    
+    auto on_render = [](double alpha) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        scene::graph()->draw();
+    };
+    
+    engene::EnGeneConfig config;
+    config.title = "Textured Quad";
+    
+    engene::EnGene app(on_initialize, on_fixed_update, on_render, config);
+    app.run();
+    
+    return 0;
+}
 ```
 
-**Tier 4: Immediate Uniforms (Manual)**
-- Set directly for one-off values
-- Queued if shader is inactive, applied immediately if active
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Black Screen / Nothing Renders**
+
+Problem: Window opens but shows only a black screen, not the clear color, nor the geometry is visible.
+
+Solution: Add `glClear()` at the start of your render callback:
 ```cpp
-shader->setUniform<float>("u_time", elapsed_time);
-```
-
-### Hierarchical Transforms
-Transforms automatically accumulate through the scene graph hierarchy:
-```cpp
-// Parent rotation affects all children
-scene::graph()->addNode("SolarSystem")
-    .with<component::TransformComponent>(system_rotation)
-    .addNode("Planet")
-        .with<component::TransformComponent>(orbit_transform)
-        .addNode("Moon")
-            .with<component::TransformComponent>(moon_orbit);
-// Moon inherits: system_rotation * orbit_transform * moon_orbit
-```
-The transform stack manages this automatically during scene traversal.
-
-### Material Stack
-Materials merge hierarchically, allowing property inheritance and overrides:
-```cpp
-// Base material for all objects
-material::stack()->push(Material::Make(glm::vec3(0.8f)));
-
-// Override specific properties for a subtree
-material::stack()->push(Material::Make()->setSpecular(glm::vec3(1.0f)));
-// ... render shiny objects ...
-material::stack()->pop(); // Restore base material
-```
-Child nodes inherit parent materials but can override individual properties.
-
-### Fixed-Timestep Loop
-Separates simulation from rendering for consistent physics and smooth visuals:
-```cpp
-auto on_fixed_update = [](double dt) {
-    // Physics runs at fixed 60 FPS regardless of frame rate
-    physics_engine->update(dt);
-};
-
 auto on_render = [](double alpha) {
-    // Rendering runs as fast as possible
-    // alpha allows interpolation between physics states
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Add this!
     scene::graph()->draw();
 };
 ```
-Prevents the "spiral of death" where slow frames cause even slower updates.
 
-### Type-Safe Components
-Retrieve components with full type safety and inheritance support:
+**Compilation Error: "Incomplete type SceneNodeBuilder"**
+
+Problem: Using `.addNode().with<>()` syntax causes compilation errors.
+
+Solution: Include the scene node builder header:
 ```cpp
-// Get first unnamed component of type
-auto transform = node->payload().get<TransformComponent>();
-
-// Get component by name
-auto light = node->payload().get<LightComponent>("MainLight");
-
-// Get all components of type (including derived types)
-auto all_transforms = node->payload().getAll<TransformComponent>();
+#include <EnGene.h>
+#include <core/scene_node_builder.h>  // Add this!
+#include <components/all.h>
 ```
-Dynamic casting handles inheritance automatically, so requesting a base type returns derived types too.
 
-### Automatic Resource Management
-All OpenGL resources use RAII for automatic cleanup:
-- **Shaders** - Programs deleted on destruction
-- **Geometry** - VAO/VBO/EBO automatically freed
-- **Textures** - GPU textures released when no longer referenced
-- **UBOs** - Uniform buffers cleaned up automatically
+**Compilation Error: "GeometryComponent is not a member of component"**
 
-No manual `glDelete*` calls needed - resources are freed when smart pointers go out of scope.
+Problem: Component types are not recognized.
 
-### Advanced Lighting System
-Unified lighting with automatic GPU upload via UBOs:
+Solution: Include the components header:
 ```cpp
-// Create lights with intuitive configuration
-auto sun = light::PointLight::Make({
-    .position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
-    .diffuse = glm::vec4(1.0f, 0.9f, 0.7f, 1.0f),
-    .constant = 1.0f,
-    .linear = 0.09f,
-    .quadratic = 0.032f
-});
-
-// Attach to scene graph for transform inheritance
-node->payload().addComponent(
-    component::LightComponent::Make(sun, light_transform)
-);
+#include <components/all.h>  // Add this!
 ```
-Supports directional, point, and spot lights with automatic world-space transformation.
 
-### Observer Pattern for Transforms
-Components can observe transform changes for reactive updates:
-```cpp
-class ObservedTransformComponent : public TransformComponent, public IObserver {
-    // Automatically notified when transform changes
-    void onNotify() override {
-        m_cached_world_matrix = transform::current();
-    }
-};
+**CMake Generator Error on Windows**
+
+Problem: CMake fails with "CMAKE_C_COMPILER not set" on MinGW systems.
+
+Solution: Specify the MinGW Makefiles generator:
+```bash
+cmake -B build -G "MinGW Makefiles"
 ```
-Used by lights and cameras to cache world-space positions efficiently.
 
+### Getting More Help
+
+- See [test/README.md](test/README.md) for detailed pitfalls and solutions
+- Check [AGENTS.md](AGENTS.md) Quick Troubleshooting section
+- Review working examples in `test/simple_test.cpp` and `test/main.cpp`
 
 ---
 
-## Understanding the Stack Systems
+## Contributing
 
-EnGene uses several stack-based systems for managing hierarchical state. Each stack has unique behaviors that may differ from typical expectations.
-
-### Transform Stack
-**Location:** `transform::stack()`
-
-**Purpose:** Accumulates transformation matrices through scene graph hierarchy.
-
-**Key Behavior:**
-- Stores **accumulated** matrices, not individual transforms
-- Each level contains the product of all parent transforms
-- `push()` multiplies the new matrix with the current top: `new_state = current_top * incoming_matrix`
-- `pop()` simply removes the top level (no matrix inversion needed)
-
-**Important Note:** Unlike other stacks, you cannot "peek" at individual transform components - you only get the final accumulated result via `transform::current()`.
-
-```cpp
-transform::stack()->push(parent_matrix);     // Stack: [identity * parent]
-transform::stack()->push(child_matrix);      // Stack: [identity * parent, parent * child]
-glm::mat4 final = transform::current();      // Returns: parent * child
-transform::stack()->pop();                   // Back to: [identity * parent]
-```
-
-**Protected Base:** Cannot pop below the identity matrix at index 0.
+Contributions are welcome! Please see [AGENTS.md](AGENTS.md) for:
+- Development guidelines and architecture details
+- Build system and testing protocols
+- Coding standards and naming conventions
+- Design patterns and best practices
+- Contribution workflow
 
 ---
 
-### Shader Stack
-**Location:** `shader::stack()`
+## License
 
-**Purpose:** Manages active shader state with lazy activation and automatic uniform application.
-
-**Key Behavior:**
-- `push()` adds shader to stack but **does NOT activate it**
-- `top()` activates the shader **only if different** from last used shader
-- `peek()` returns the top shader **without activating it or applying uniforms** (no side effects)
-- Tracks `last_used_shader` to prevent redundant `glUseProgram()` calls
-- Automatically applies Tier 2 (static) and Tier 4 (queued) uniforms on activation
-- Applies Tier 3 (dynamic) uniforms **every time** `top()` is called
-
-**Unexpected Behavior:** Calling `top()` multiple times has side effects - it re-applies dynamic uniforms each time. This is intentional for per-draw updates. Use `peek()` when you need to inspect the shader without triggering activation.
-
-```cpp
-shader::stack()->push(custom_shader);        // Shader added but NOT active yet
-shader::stack()->top();                      // NOW shader activates + uniforms applied
-shader::stack()->top();                      // Dynamic uniforms re-applied (no glUseProgram)
-shader::stack()->pop();                      // Previous shader restored on next top()
-```
-
-**State Transition:** When switching shaders, the previous shader's `m_is_currently_active_in_GL` flag is set to false, and the new shader's flag is set to true. This enables the Tier 4 immediate uniform system to know whether to apply immediately or queue.
-
-**Protected Base:** Cannot pop the base shader created during stack initialization.
+[Add your license information here]
 
 ---
 
-### Texture Stack
-**Location:** `texture::stack()`
+## Links
 
-**Purpose:** Manages texture bindings across multiple texture units with intelligent GPU state tracking.
+- **Repository:** https://github.com/The-EnGene-Project/CoreGene
+- **Documentation:** [AGENTS.md](AGENTS.md)
+- **Issues:** https://github.com/The-EnGene-Project/CoreGene/issues
 
-**Key Behavior:**
-- Stores **complete texture state** at each level (all active units)
-- Each `push()` copies the previous state and modifies it
-- Tracks actual GPU state in `m_active_gpu_state` to prevent redundant `glBindTexture()` calls
-- `pop()` intelligently restores previous state, only rebinding changed units
-- Maintains a `sampler_to_unit_map` for dynamic uniform binding
-
-**Unexpected Behavior:** Unlike other stacks, texture stack stores maps of `{unit -> texture}` at each level, not individual textures. This means you can have multiple textures active simultaneously on different units.
-
-```cpp
-// Level 0: {}
-texture::stack()->push(tex1, 0);             // Level 1: {0 -> tex1}
-texture::stack()->push(tex2, 1);             // Level 2: {0 -> tex1, 1 -> tex2}
-texture::stack()->push(tex3, 0);             // Level 3: {0 -> tex3, 1 -> tex2} (overrides unit 0)
-texture::stack()->pop();                     // Back to: {0 -> tex1, 1 -> tex2}
-                                             // Only unit 0 is rebound (tex3 -> tex1)
-```
-
-**Sampler Registration:** TextureComponent registers sampler names during `apply()` and unregisters during `unapply()`. The `getUnitProvider()` function returns a provider lambda that queries the texture stack for the current unit associated with a sampler name. This provider is used by shader uniforms to dynamically resolve texture units at render time.
-
-**Protected Base:** Cannot pop below the empty base state at index 0.
-
----
-
-### Material Stack
-**Location:** `material::stack()`
-
-**Purpose:** Manages material properties with hierarchical merging and provider-based uniform binding.
-
-**Key Behavior:**
-- Stores **merged property maps** at each level, not individual materials
-- Each `push()` copies the previous state and **overwrites** matching property names
-- Properties are stored as `std::variant` for type safety
-- Provides `getValue<T>()` and `getProvider<T>()` for shader uniform binding
-- Base state (index 0) contains default PBR properties
-
-**Unexpected Behavior:** Materials don't "stack" additively - child properties completely override parent properties with the same name. This is different from transform multiplication.
-
-```cpp
-// Level 0: {ambient: (0.2, 0.2, 0.2), diffuse: (0.8, 0.8, 0.8), ...}
-auto mat1 = Material::Make()->setDiffuse(glm::vec3(1.0, 0.0, 0.0));
-material::stack()->push(mat1);
-// Level 1: {ambient: (0.2, 0.2, 0.2), diffuse: (1.0, 0.0, 0.0), ...}
-//          ^^^ ambient inherited, diffuse overridden
-
-auto mat2 = Material::Make()->setSpecular(glm::vec3(1.0));
-material::stack()->push(mat2);
-// Level 2: {ambient: (0.2, 0.2, 0.2), diffuse: (1.0, 0.0, 0.0), specular: (1.0, 1.0, 1.0), ...}
-//          ^^^ all previous properties inherited, specular overridden
-```
-
-**Provider Pattern:** Instead of directly setting uniforms, materials use provider functions that query the stack at render time. This enables dynamic property changes without reconfiguring shaders.
-
-**Protected Base:** Cannot pop below the base material state at index 0.
-
----
-
-## The EnGene Application Class
-
-### Overview
-`EnGene` is the main application class that orchestrates the entire engine. It manages the window, OpenGL context, game loop, and coordinates all major systems.
-
-### Responsibilities
-
-**1. Window & Context Management**
-- Initializes GLFW and creates the OpenGL context (4.3 Core Profile)
-- Enables OpenGL debug output for error tracking
-- Manages window lifecycle and event polling
-
-**2. Base Shader Setup**
-- Creates and configures the engine's default shader
-- Automatically binds the scene's default camera UBOs to the base shader
-- Configures the `u_model` uniform to use `transform::current()`
-- Pushes base shader onto shader stack during render loop
-
-**3. Fixed-Timestep Game Loop**
-- Implements the "Fix Your Timestep" pattern
-- Separates simulation (`on_fixed_update`) from rendering (`on_render`)
-- Prevents "spiral of death" with `maxFrameTime` cap
-- Provides interpolation alpha to render callback
-
-**4. Input Handling**
-- Takes ownership of an `InputHandler` instance
-- Applies input callbacks to the GLFW window
-
-**5. Scene Graph Integration**
-- Accesses the singleton `SceneGraph` to get the default camera
-- Coordinates with the scene during initialization
-
-### Relationships
-
-```
-EnGene
-├── owns → GLFWwindow*
-├── owns → shader::ShaderPtr (base_shader)
-├── owns → input::InputHandler (unique_ptr)
-├── uses → scene::SceneGraph (singleton)
-│   └── provides → component::Camera (default camera)
-├── uses → shader::ShaderStack (singleton)
-├── uses → transform::TransformStack (singleton)
-└── uses → uniform::GlobalResourceManager (singleton)
-```
-
-### Initialization Flow
-
-1. **Constructor Phase:**
-   - Parse `EnGeneConfig` struct
-   - Initialize GLFW window and OpenGL context
-   - Create base shader from config paths
-   - Attach and bake base shader
-   - Get default camera from SceneGraph (triggers SceneGraph singleton creation)
-   - Bind camera UBOs to base shader
-   - Re-bake shader to activate UBO bindings
-   - Set clear color and enable depth testing
-
-2. **Run Phase:**
-   - Call user's `on_initialize` callback (scene construction happens here)
-   - Enter game loop:
-     - Accumulate elapsed time
-     - Run `on_fixed_update` in fixed timesteps until caught up
-     - Push base shader onto shader stack
-     - Apply per-frame uniforms (UBOs)
-     - Call user's `on_render` callback
-     - Pop base shader from stack
-     - Swap buffers and poll events
-
-### Key Design Decisions
-
-**Why pass `EnGene&` to `on_initialize`?**
-Allows user code to access `getBaseShader()` for additional uniform configuration during setup.
-
-**Why push/pop base shader every frame?**
-Ensures the base shader is always at the bottom of the shader stack, providing a consistent default. User code can push custom shaders on top.
-
-**Why separate `on_fixed_update` and `on_render`?**
-Decouples physics/simulation (which needs consistent timesteps) from rendering (which should run as fast as possible). The `alpha` parameter in `on_render` allows interpolation between physics states for smooth visuals.
-
-**Why create a default camera automatically?**
-Prevents crashes from missing camera setup. The default orthographic camera provides a working view/projection immediately. Users can replace it with `scene::graph()->setActiveCamera()`.
-
-### Configuration
-
-The `EnGeneConfig` struct provides sensible defaults:
-```cpp
-struct EnGeneConfig {
-    int width = 800;
-    int height = 600;
-    std::string title = "EnGene Application";
-    int updatesPerSecond = 60;           // Fixed timestep rate
-    double maxFrameTime = 0.25;          // Spiral of death prevention
-    float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    std::string base_vertex_shader_source = DEFAULT_VERTEX_SHADER;
-    std::string base_fragment_shader_source = DEFAULT_FRAGMENT_SHADER;
-};
-```
-
-All fields are optional - omitted fields use defaults. This allows minimal configuration:
-```cpp
-engene::EnGene app(on_init, on_update, on_render); // Uses all defaults
-```
-
-Or selective overrides:
-```cpp
-engene::EnGeneConfig config;
-config.width = 1920;
-config.height = 1080;
-config.title = "My Game";
-engene::EnGene app(on_init, on_update, on_render, config);
-```

@@ -51,6 +51,7 @@ EnGene is a modular, declarative C++ OpenGL abstraction library for developers w
   - [Light Count Configuration](#light-count-configuration)
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
+  - [Dependency Management](#dependency-management)
 - [Examples](#examples)
   - [Solar System with Lighting](#solar-system-with-lighting)
   - [Textured Quad](#textured-quad)
@@ -87,6 +88,8 @@ EnGene is a **header-only library** - no compilation required, just include the 
 ```bash
 # Add EnGene as a submodule to your project
 git submodule add https://github.com/The-EnGene-Project/CoreGene.git external/CoreGene
+
+# Initialize EnGene's dependency submodule (CoreGene-deps)
 git submodule update --init --recursive
 ```
 
@@ -97,20 +100,30 @@ target_include_directories(YourTarget PRIVATE
     "${CMAKE_SOURCE_DIR}/external/CoreGene/core_gene/src"
 )
 
-# Link required dependencies (GLFW, GLAD, GLM, STB)
+# Add dependency include directories from CoreGene-deps submodule
 target_include_directories(YourTarget PRIVATE
-    "${CMAKE_SOURCE_DIR}/libs/glad/include"
-    "${CMAKE_SOURCE_DIR}/libs/glfw/include"
-    "${CMAKE_SOURCE_DIR}/libs/glm/include"
-    "${CMAKE_SOURCE_DIR}/libs/stb/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glad/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glm/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/stb/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/include"  # Optional
 )
 
-# Link GLFW and OpenGL
+# Link directories for libraries (Windows MinGW example)
+link_directories(
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/lib-mingw-w64"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/lib"
+)
+
+# Link GLFW, OpenGL, and Backtrace
 target_link_libraries(YourTarget
-    glfw
-    opengl32  # Windows: opengl32.lib, Linux: -lGL, macOS: -framework OpenGL
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/lib-mingw-w64/libglfw3.a"
+    opengl32.lib  # Windows: opengl32.lib, Linux: -lGL, macOS: -framework OpenGL
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/lib/libbacktrace.a"  # Optional
 )
 ```
+
+> **Note:** The `libs/` directory is a git submodule containing all dependencies. The `--recursive` flag ensures it's initialized automatically.
 
 **Method 2: Manual Copy**
 1. Download or clone the CoreGene repository
@@ -1762,12 +1775,40 @@ EnGene/
 
 ## Dependencies
 
+EnGene requires the following dependencies:
+
 - **C++ Standard:** C++17 minimum (C++20 recommended)
 - **OpenGL:** 4.3 Core Profile
 - **GLFW** - Window and input management
 - **GLAD** - OpenGL function loader
 - **GLM** - Mathematics library for graphics
 - **STB Image** - Image loading (stb_image.h)
+- **Backtrace** (optional) - Debug stack traces and error reporting
+
+### Dependency Management
+
+All external dependencies are managed via the **CoreGene-deps** git submodule, which contains pre-configured libraries for Windows (MinGW), Linux, and macOS.
+
+**To initialize dependencies:**
+```bash
+# When cloning CoreGene for the first time
+git clone --recursive https://github.com/The-EnGene-Project/CoreGene.git
+
+# Or if you already cloned without --recursive
+git submodule update --init --recursive
+```
+
+The `libs/` directory is a git submodule pointing to [CoreGene-deps](https://github.com/The-EnGene-Project/CoreGene-deps.git), which contains:
+- `libs/glad/` - OpenGL function loader
+- `libs/glfw/` - Window management library
+- `libs/glm/` - Math library
+- `libs/stb/` - Image loading library
+- `libs/backtrace/` - Debug stack traces (optional)
+
+**Platform-Specific Notes:**
+- **Windows (MinGW):** Pre-built libraries included in `libs/glfw/lib-mingw-w64/` and `libs/backtrace/lib/`
+- **Linux:** You may prefer to use system packages (apt, yum) for GLFW and build from source
+- **macOS:** Use Homebrew for GLFW (`brew install glfw`) or use the provided libraries
 
 ---
 

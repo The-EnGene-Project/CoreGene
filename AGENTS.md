@@ -85,11 +85,16 @@
 **OpenGL Version:** 4.3 Core Profile
 
 ### Key Dependencies
+
+All dependencies are provided via the **CoreGene-deps** git submodule in the `libs/` directory:
+
 - **GLFW** - Window and input management
 - **GLAD** - OpenGL function loader (must define `GLAD_GL_IMPLEMENTATION` before including)
 - **GLM** - Mathematics library for graphics
 - **STB Image** - Image loading (stb_image.h)
 - **Backtrace** (optional) - Debug stack traces and error reporting
+
+**Dependency Repository:** [CoreGene-deps](https://github.com/The-EnGene-Project/CoreGene-deps.git)
 
 **CRITICAL:** When including `EnGene.h`, the library automatically defines `GLAD_GL_IMPLEMENTATION`. If you include GLAD separately, ensure this is defined only once in your entire project.
 
@@ -118,9 +123,35 @@ cmake --build build --target refetch_coregene
 
 ### Dependency Management
 
-- Dependencies are located in `/libs/` directory
-- CoreGene can be fetched via CMake FetchContent from the main repository
-- External libraries (GLFW, GLAD, GLM, STB) are managed manually in `/libs/`
+All external dependencies are managed via the **CoreGene-deps** git submodule:
+
+- The `/libs/` directory is a git submodule pointing to [CoreGene-deps](https://github.com/The-EnGene-Project/CoreGene-deps.git)
+- Contains pre-configured libraries: GLFW, GLAD, GLM, STB, and Backtrace
+- Automatically initialized with `git submodule update --init --recursive`
+- CoreGene itself can be fetched via CMake FetchContent from the main repository
+
+**Submodule Structure:**
+```
+libs/                          # Git submodule (CoreGene-deps)
+├── glad/include/              # OpenGL function loader
+├── glfw/include/              # Window management headers
+├── glfw/lib-mingw-w64/        # Pre-built GLFW for Windows MinGW
+├── glm/include/               # Math library (header-only)
+├── stb/include/               # Image loading (header-only)
+└── backtrace/                 # Debug stack traces (optional)
+    ├── include/
+    └── lib/
+```
+
+**Updating Dependencies:**
+```bash
+# Update to latest CoreGene-deps
+cd libs
+git pull origin main
+cd ..
+git add libs
+git commit -m "chore: update CoreGene-deps submodule"
+```
 
 ### Platform-Specific Notes
 
@@ -145,6 +176,8 @@ cmake --build build --target refetch_coregene
 ```bash
 # Add EnGene as a submodule to your project
 git submodule add https://github.com/The-EnGene-Project/CoreGene.git external/CoreGene
+
+# Initialize EnGene and its dependency submodule (CoreGene-deps)
 git submodule update --init --recursive
 ```
 
@@ -155,20 +188,30 @@ target_include_directories(YourTarget PRIVATE
     "${CMAKE_SOURCE_DIR}/external/CoreGene/core_gene/src"
 )
 
-# Link required dependencies
+# Add dependency include directories from CoreGene-deps submodule
 target_include_directories(YourTarget PRIVATE
-    "${CMAKE_SOURCE_DIR}/libs/glad/include"
-    "${CMAKE_SOURCE_DIR}/libs/glfw/include"
-    "${CMAKE_SOURCE_DIR}/libs/glm/include"
-    "${CMAKE_SOURCE_DIR}/libs/stb/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glad/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glm/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/stb/include"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/include"  # Optional
 )
 
-# Link GLFW and OpenGL
+# Link directories for libraries (Windows MinGW example)
+link_directories(
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/lib-mingw-w64"
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/lib"
+)
+
+# Link GLFW, OpenGL, and Backtrace
 target_link_libraries(YourTarget
-    glfw
-    opengl32  # Windows: opengl32.lib, Linux: -lGL, macOS: -framework OpenGL
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/glfw/lib-mingw-w64/libglfw3.a"
+    opengl32.lib  # Windows: opengl32.lib, Linux: -lGL, macOS: -framework OpenGL
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/libs/backtrace/lib/libbacktrace.a"  # Optional
 )
 ```
+
+> **Note:** The `--recursive` flag ensures the CoreGene-deps submodule is initialized automatically.
 
 **Method 2: Manual Copy**
 1. Download or clone the CoreGene repository
@@ -209,7 +252,34 @@ Currently, the project uses manual testing via example applications:
 
 ### Setting Up a Test Project
 
-Since EnGene is a header-only library, testing should be done in a separate directory:
+**Option 1: Use the Built-in Test Directory (Recommended for Contributors)**
+
+The repository includes a `test/` directory with pre-configured test applications:
+
+```bash
+# Clone the repository with submodules
+git clone --recursive https://github.com/The-EnGene-Project/CoreGene.git
+
+# Or if already cloned, initialize submodules
+cd CoreGene
+git submodule update --init --recursive
+
+# Build and run tests
+cd test
+cmake -B build -G "MinGW Makefiles"  # Windows MinGW
+cmake --build build
+./build/SimpleTest.exe    # Simple triangle test
+./build/EnGeneTest.exe    # Full environment test
+```
+
+The test directory includes:
+- `simple_test.cpp` - Minimal triangle rendering test
+- `main.cpp` - Full environment configuration test
+- Pre-configured CMakeLists.txt with proper dependency paths
+
+**Option 2: Create External Test Project (For Library Users)**
+
+Since EnGene is a header-only library, you can also test in a separate directory:
 
 ```bash
 # Create a test project outside the repository
@@ -244,24 +314,37 @@ EOF
 ### Running Tests
 
 ```bash
-# From your test project directory (NOT the repository)
-cmake -B build
+# From your test project directory
+cmake -B build -G "MinGW Makefiles"  # Windows MinGW (specify generator if needed)
 cmake --build build
 ./build/EnGeneTest  # Or your executable name
 ```
 
 ### Test File Structure
 
-- **DO NOT** add test `.cpp` files to the EnGene repository
-- Create separate test projects in external directories
+**Repository Test Directory (`test/`):**
+- Contains pre-configured test applications for contributors
+- `simple_test.cpp` - Minimal triangle rendering test
+- `main.cpp` - Full environment configuration test
+- CMakeLists.txt configured to use `../libs/` submodule dependencies
+- **DO** use this for testing changes to CoreGene during development
+- **DO NOT** commit test executables or build artifacts
+
+**External Test Projects:**
+- Create separate test projects outside the repository for application development
 - Example applications in `core_gene/` are for demonstration only
 - Each test project should demonstrate specific engine features
 
-**Why separate folders?**
-- Keeps the library repository clean and focused
-- Prevents accidental commits of test executables
-- Allows users to test without modifying the library
-- Maintains header-only library structure
+**Why the test directory exists in the repo:**
+- Provides quick validation for contributors
+- Tests submodule integration (CoreGene-deps)
+- Demonstrates proper CMakeLists.txt configuration
+- Validates build system across platforms
+
+**Important Notes:**
+- Always initialize submodules: `git submodule update --init --recursive`
+- The `test/` directory references `../libs/` for dependencies
+- Test executables are gitignored and should not be committed
 
 **Future:** Consider integrating GTest or Catch2 for automated testing in a dedicated test repository.
 

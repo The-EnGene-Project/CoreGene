@@ -1,6 +1,10 @@
 # AGENTS.md - EnGene Development Guide
 
-## 🚀 Project Overview
+> **For Library Users:** If you want to use EnGene in your application, see [README.md](README.md) for API documentation, usage examples, and integration instructions.
+
+---
+
+## Project Overview
 
 **EnGene** is a modular, declarative C++ OpenGL abstraction library designed for developers who want full control over their graphics rendering pipeline. The library provides a scene graph architecture with an ECS-inspired component system, hierarchical transforms, and a sophisticated 4-tier uniform management system.
 
@@ -18,14 +22,18 @@
 
 **CRITICAL:** When including `EnGene.h`, the library automatically defines `GLAD_GL_IMPLEMENTATION`. If you include GLAD separately, ensure this is defined only once in your entire project.
 
-## 🛠️ Build System & Compilation
+---
+
+## Development Environment Setup
 
 ### Build System
+
 The project uses **CMake** (minimum version 3.14) with **FetchContent** for dependency management.
 
 **IMPORTANT: EnGene is a header-only library.** There is no separate compilation step for the library itself. You only need to include the headers in your project and compile your application code.
 
 ### Build Commands
+
 ```bash
 # Configure the build
 cmake -B build
@@ -38,6 +46,7 @@ cmake --build build --target refetch_coregene
 ```
 
 ### Dependency Management
+
 - Dependencies are located in `/libs/` directory
 - CoreGene can be fetched via CMake FetchContent from the main repository
 - External libraries (GLFW, GLAD, GLM, STB) are managed manually in `/libs/`
@@ -114,9 +123,12 @@ Then in your code:
 #include <engene/gl_base/shader.h>
 ```
 
-## 🧪 Testing Protocol
+---
+
+## Testing Protocol
 
 ### Testing Framework
+
 Currently, the project uses manual testing via example applications:
 - `example_main.cpp` - Solar system demo with lighting
 - `working_example_main.cpp` - Physics simulation demo
@@ -125,6 +137,7 @@ Currently, the project uses manual testing via example applications:
 **IMPORTANT: Testing must be done in a separate project folder outside the repository.**
 
 ### Setting Up a Test Project
+
 Since EnGene is a header-only library, testing should be done in a separate directory:
 
 ```bash
@@ -158,6 +171,7 @@ EOF
 ```
 
 ### Running Tests
+
 ```bash
 # From your test project directory (NOT the repository)
 cmake -B build
@@ -166,6 +180,7 @@ cmake --build build
 ```
 
 ### Test File Structure
+
 - **DO NOT** add test `.cpp` files to the EnGene repository
 - Create separate test projects in external directories
 - Example applications in `core_gene/` are for demonstration only
@@ -179,7 +194,9 @@ cmake --build build
 
 **Future:** Consider integrating GTest or Catch2 for automated testing in a dedicated test repository.
 
-## 🏛️ Core Architecture & Abstractions
+---
+
+## Core Architecture & Design Philosophy
 
 ### Resource Management Philosophy
 
@@ -253,9 +270,18 @@ This enables the modern debug callback system. If debug context creation fails, 
 - Abort with stack trace for OpenGL errors (high-severity debug messages, GL_CHECK failures)
 - Validate state in debug builds, optimize out checks in release builds
 
-### Key Abstractions
+---
 
-#### Scene Graph Architecture
+## Architecture Deep Dive
+
+This section provides implementation details and design rationale for EnGene's core systems. For API usage and examples, see the corresponding sections in [README.md](README.md).
+
+
+### Scene Graph Architecture
+
+**For API usage, see:** [Scene Management in README.md](README.md#scene-management)
+
+#### Implementation Details
 
 **Node<T>** - Generic tree structure implementing Composite pattern
 - Templated on payload type for flexibility
@@ -263,11 +289,17 @@ This enables the modern debug callback system. If debug context creation fails, 
 - Supports visitor pattern for traversal
 - Methods: `addChild()`, `removeChild()`, `visit()`, `setApplicable()`
 
+**Design Rationale:**
+The generic `Node<T>` template allows the same tree structure to be reused for different purposes. By templating on the payload type, we can have scene nodes (`Node<ComponentCollection>`), UI nodes, or any other hierarchical structure without code duplication.
+
 **SceneGraph** - Meyers singleton managing the entire scene hierarchy
 - Maintains root node and name/ID registries
 - Entry point: `scene::graph()->addNode(name)`
 - Provides `draw()` method to traverse and render the scene
 - Automatically creates default orthographic camera
+
+**Design Rationale:**
+The singleton pattern ensures a single source of truth for the scene. The name and ID registries enable fast node lookup without traversing the entire tree. The visitor pattern in `draw()` allows flexible traversal strategies.
 
 **SceneNode** - Type alias for `Node<ComponentCollection>`
 - Fundamental building block of the scene
@@ -279,17 +311,40 @@ This enables the modern debug callback system. If debug context creation fails, 
 - Eliminates manual node creation boilerplate
 - Supports implicit conversion to `SceneNode&` and `SceneNodePtr`
 
-#### Component System (ECS-Inspired)
+**Design Rationale:**
+The builder pattern makes scene construction more readable and maintainable. Method chaining creates a declarative syntax that mirrors the hierarchical structure of the scene graph.
+
+
+### Component System Architecture
+
+**For API usage, see:** [Component System in README.md](README.md#component-system)
+
+#### ECS-Inspired Design
+
+EnGene's component system is inspired by Entity-Component-System (ECS) architecture but adapted for a scene graph context:
+
+- **Entities** → Scene nodes (hierarchical, not flat)
+- **Components** → Modular behaviors attached to nodes
+- **Systems** → Implicit via component priorities and scene traversal
 
 **Component** - Abstract base class for all components
 - Lifecycle: `apply()` (on entry) and `unapply()` (on exit)
 - Each component has: unique ID, optional name, priority value, weak owner reference
 - Priority determines execution order (see Priority System below)
 
+**Design Rationale:**
+The priority-based execution model provides deterministic ordering without explicit system dependencies. Components can be added/removed dynamically, and the priority system ensures correct execution order automatically.
+
 **ComponentCollection** - Container managing all components on a node
 - Three internal structures: type map, name map, priority-sorted vector
 - Methods: `get<T>()`, `getAll<T>()`, removal by instance/name/ID
 - `apply()` iterates forward, `unapply()` iterates reverse
+
+**Design Rationale:**
+Multiple data structures optimize different access patterns:
+- Type map: Fast retrieval by component type
+- Name map: Fast retrieval by component name
+- Priority vector: Efficient ordered traversal during rendering
 
 **Component Priority System:**
 ```
@@ -301,68 +356,64 @@ This enables the modern debug callback system. If debug context creation fails, 
 600+ - Custom        (user scripts)
 ```
 
-**Core Components:**
-- `TransformComponent` - Pushes/pops transform matrix
-- `GeometryComponent` - Calls `Geometry::Draw()`
-- `ShaderComponent` - Overrides shader for subtree
-- `TextureComponent` - Binds texture to unit
-- `MaterialComponent` - Pushes/pops material properties
-- `LightComponent` - Integrates lights with transform inheritance
-- `ObservedTransformComponent` - Caches world-space transforms
+**Design Rationale:**
+Priority-based execution eliminates the need for explicit dependencies between components. Lower priorities execute first, ensuring transforms are set up before rendering, shaders are bound before materials, etc.
 
-#### Rendering System
+
+### Rendering System Architecture
+
+**For API usage, see:** [Rendering System in README.md](README.md#rendering-system)
+
+#### GPU State Management
+
+EnGene uses a stack-based approach to manage OpenGL state hierarchically, mirroring the scene graph structure.
 
 **Shader** - Manages GLSL programs with 4-tier uniform system
 
-**4-Tier Uniform System:**
-1. **Global Resources (UBOs/SSBOs)** - Bound at link time, shared across shaders (camera, lights)
+**4-Tier Uniform System Architecture:**
+
+1. **Global Resources (UBOs/SSBOs)** - Bound at link time, shared across shaders
    - Managed by `GlobalResourceManager` singleton via `uniform::manager()`
    - Register with: `shader->addResourceBlockToBind("BlockName")`
    - Automatically bound during `Bake()`
    - Update modes: `PER_FRAME` (updated every frame) or `ON_DEMAND` (manual updates)
-   - Access: `uniform::manager().registerResource()`, `uniform::manager().applyPerFrame()`
-2. **Static Uniforms** - Applied when shader activates (texture units)
+
+**Design Rationale:**
+UBOs eliminate redundant uniform uploads for data shared across shaders (camera matrices, lights). Binding at link time ensures consistent binding points across all shaders.
+
+2. **Static Uniforms** - Applied when shader activates
    - Configure with: `shader->configureStaticUniform<T>(name, provider)`
    - Applied once when `UseProgram()` is called
-3. **Dynamic Uniforms** - Applied per-draw via provider functions (model matrix, materials)
+
+**Design Rationale:**
+Static uniforms optimize for values that don't change during shader use (texture units, configuration flags). Provider functions allow lazy evaluation.
+
+3. **Dynamic Uniforms** - Applied per-draw via provider functions
    - Configure with: `shader->configureDynamicUniform<T>(name, provider)`
    - Applied every time `ShaderStack::top()` is called
    - Provider functions are called each frame for fresh values
-4. **Immediate Uniforms** - Set directly for one-off values (time, custom parameters)
+
+**Design Rationale:**
+Dynamic uniforms handle frequently changing values (model matrix, materials). Provider functions decouple uniform configuration from value computation, enabling stack-based state management.
+
+4. **Immediate Uniforms** - Set directly for one-off values
    - Set with: `shader->setUniform<T>(name, value)`
    - If shader inactive: queued and applied on next activation
    - If shader active: applied immediately
 
-**Shader Lifecycle:**
-- Create: `Shader::Make(vertex_src, fragment_src)`
-- Attach: `AttachVertexShader()`, `AttachFragmentShader()`
-- Link: `Bake()` - Just-in-Time linking and uniform configuration
-- Activate: `UseProgram()` or via `ShaderStack::top()`
+**Design Rationale:**
+Immediate uniforms provide flexibility for one-off values (time, debug parameters) without requiring provider configuration.
+
+
+#### Stack System Implementations
 
 **ShaderStack** - Singleton managing active shader state
 - Lazy activation: `top()` only calls `glUseProgram()` if shader changed
 - Prevents redundant state changes
 - Base shader cannot be popped (always valid shader available)
 
-**Geometry** - Low-level wrapper for vertex data
-- Encapsulates VAO, VBO, EBO
-- Constructor configures vertex attributes automatically
-- `Draw()` method binds VAO and calls `glDrawElements()`
-- Supports flexible vertex layouts via attribute size vector
-
-**Transform** - 4x4 transformation matrix with observer pattern
-- Chainable operations: `translate()`, `rotate()`, `scale()`
-- Implements `ISubject` interface for observer pattern
-- Notifies observers on changes (used by `ObservedTransformComponent`)
-- Methods call `notify()` after modifications
-- Factory: `Transform::Make()`
-
-**Observer Pattern Implementation:**
-- `IObserver` interface: Defines `onNotify(const ISubject*)` method
-- `ISubject` interface: Manages observer list, provides `notify()` method
-- Used by Transform to notify components of matrix changes
-- `ObservedTransformComponent` implements `IObserver` to cache world transforms
-- Prevents redundant matrix calculations by caching until notified
+**Design Rationale:**
+Lazy activation minimizes expensive `glUseProgram()` calls. The protected base ensures a valid shader is always available, preventing OpenGL errors.
 
 **TransformStack** - Singleton managing hierarchical transforms
 - Stores accumulated matrices (not individual transforms)
@@ -370,11 +421,8 @@ This enables the modern debug callback system. If debug context creation fails, 
 - `current()` returns top matrix (used as model matrix)
 - Cannot pop below identity matrix
 
-**Material** - Data container for PBR properties
-- Properties stored as `std::variant<float, int, vec2, vec3, vec4, mat3, mat4>`
-- Type-safe `set<T>()` method
-- Convenience methods: `setAmbient()`, `setDiffuse()`, `setSpecular()`, `setShininess()`
-- Factory: `Material::Make(vec3 color)`
+**Design Rationale:**
+Storing accumulated matrices eliminates redundant matrix multiplications during traversal. Each level represents the complete transform from root to that node.
 
 **MaterialStack** - Singleton managing hierarchical material merging
 - Each level stores complete merged property map
@@ -382,163 +430,33 @@ This enables the modern debug callback system. If debug context creation fails, 
 - `getValue<T>()` for immediate access
 - `getProvider<T>()` for creating uniform provider functions
 
-**Texture** - Manages 2D textures with automatic caching
-- Uses STB Image for loading
-- Static cache prevents duplicate GPU uploads
-- `Make(filename)` returns cached instance if already loaded
-- Automatic resource cleanup in destructor
+**Design Rationale:**
+Complete property maps at each level enable O(1) property lookup. Override semantics (not additive) match intuitive material inheritance behavior.
 
 **TextureStack** - Singleton managing texture bindings across units
 - Tracks GPU state to prevent redundant `glBindTexture()` calls
 - Maintains sampler-to-unit mapping for dynamic resolution
 - Intelligent state restoration on `pop()`
 
-#### Other Genes - Derived Abstractions
+**Design Rationale:**
+GPU state tracking eliminates redundant texture binds. Complete state storage at each level enables efficient restoration without querying OpenGL state.
 
-**Philosophy:**
-The `other_genes/` directory contains **derived code that is NOT intended to remain in this repository permanently**. CoreGene is dedicated exclusively to the most **nuclear and central abstractions** (scene graph, components, shaders, transforms, etc.). The "other genes" are **specific derivations** of these core abstractions that serve as:
-- Examples of how to use the core abstractions
-- Temporary convenience implementations
-- Candidates for extraction into separate repositories/libraries
 
-**IMPORTANT:** When contributing to EnGene:
-- ✅ DO add core abstractions to the main directories (`core/`, `gl_base/`, `components/`, etc.)
-- ✅ DO add derived/specific implementations to `other_genes/`
-- ❌ DO NOT add application-specific code to CoreGene
-- ❌ DO NOT let `other_genes/` grow indefinitely - extract mature code into separate "gene" libraries
+#### Observer Pattern Implementation
 
-**Current Contents:**
+**IObserver** interface: Defines `onNotify(const ISubject*)` method
+**ISubject** interface: Manages observer list, provides `notify()` method
 
-**2D Shapes** (`other_genes/shapes/`):
-- `Circle` - Circular geometry with configurable segments
-- `Polygon` - N-sided polygon geometry
+**Usage in Transform:**
+- Transform implements `ISubject` interface
+- Notifies observers on matrix changes
+- `ObservedTransformComponent` implements `IObserver` to cache world transforms
+- Prevents redundant matrix calculations by caching until notified
 
-**Textured 2D Shapes** (`other_genes/textured_shapes/`):
-- `Quad` - Textured rectangle with UV coordinates
-- `TexturedCircle` - Circular geometry with texture mapping
+**Design Rationale:**
+The observer pattern decouples transform changes from dependent systems. Components can react to transform updates without polling or tight coupling. Weak pointers prevent circular dependencies.
 
-**3D Shapes** (`other_genes/3d_shapes/`):
-- `Cube` - Box geometry with normals
-- `Sphere` - Spherical geometry with configurable subdivisions
-- `Cylinder` - Cylindrical geometry with caps
-
-**Input Handlers** (`other_genes/input_handlers/`):
-- `BasicInputHandler` - Simple keyboard/mouse input
-- `ArcballController` - 3D camera rotation controller
-- `ArcballInputHandler` - Input handler for arcball camera
-
-**Utilities** (`other_genes/`):
-- `Grid` - Helper for rendering grid lines
-
-**Usage:**
-```cpp
-#include "other_genes/3d_shapes/sphere.h"
-#include "other_genes/input_handlers/arcball_input_handler.h"
-
-// Create geometry
-auto sphere_geom = Sphere::Make(radius, subdivisions);
-
-// Use with component
-node.with<component::GeometryComponent>(sphere_geom);
-```
-
-**Future Vision:**
-As the ecosystem matures, specific "genes" should be extracted into separate repositories:
-- `ShapeGene` - Collection of 2D/3D geometric primitives
-- `InputGene` - Advanced input handling and camera controllers
-- `PhysicsGene` - Physics integration components
-- `AudioGene` - Audio system integration
-- etc.
-
-This keeps CoreGene focused on the essential abstractions while allowing the ecosystem to grow organically.
-
-#### Lighting System
-
-**Light** - Abstract base class for all light types
-- Common properties: ambient, diffuse, specular colors
-- Pure virtual: `getType()` for runtime identification
-- Created via designated initializer structs
-
-**Light Types:**
-- `DirectionalLight` - Infinite-distance lights (sun)
-- `PointLight` - Omnidirectional with attenuation
-- `SpotLight` - Cone-shaped, inherits from PointLight
-
-**LightManager** - Templated singleton collecting active lights
-- Automatically registers/unregisters via `LightComponent` lifecycle
-- `apply()` method packs light data into UBO structure
-- Transforms lights to world space using component's cached matrix
-- Default max: 16 lights (configurable via `MAX_SCENE_LIGHTS`)
-
-**Customizing Maximum Lights:**
-```cpp
-// In your main.cpp BEFORE including EnGene
-#define MAX_SCENE_LIGHTS 32
-#include <EnGene.h>
-```
-**CRITICAL:** Must match GLSL shader definition exactly!
-
-#### Application Framework
-
-**EnGene** - Main application class
-- Manages GLFW window and OpenGL context (4.3 Core Profile)
-- Implements fixed-timestep game loop with interpolation support
-- Constructor signature:
-  ```cpp
-  EnGene(
-      std::function<void(EnGene&)> on_initialize,
-      std::function<void(double)> on_fixed_update,
-      std::function<void(double)> on_render,
-      EnGeneConfig config = {},
-      input::InputHandler* handler = nullptr
-  )
-  ```
-- **Lifecycle callbacks:**
-  - `on_initialize(EnGene&)` - Called once before the main loop, receives engine reference
-  - `on_fixed_update(double dt)` - Called at fixed rate (default 60 Hz), receives fixed timestep
-  - `on_render(double alpha)` - Called every frame, receives interpolation alpha (0.0-1.0)
-- **Automatic setup:**
-  - Creates default orthographic camera and binds to base shader
-  - Enables OpenGL depth testing
-  - Configures debug context and error callbacks
-  - Applies input handler callbacks to window
-- **Methods:**
-  - `run()` - Starts the main loop (blocks until window closes)
-  - `getBaseShader()` - Returns the base shader for configuration
-- Prevents "spiral of death" with `maxFrameTime` cap (default 0.25s)
-- Non-copyable, non-movable
-
-**EnGeneConfig** - Configuration struct with sensible defaults
-- **Window Settings:**
-  - `title` (default: "EnGene Window")
-  - `width` (default: 800)
-  - `height` (default: 800)
-- **Engine Settings:**
-  - `updatesPerSecond` (default: 60) - Fixed update frequency
-  - `maxFrameTime` (default: 0.25) - Max frame time to prevent spiral of death
-  - `clearColor` (default: {0.1f, 0.1f, 0.1f, 1.0f}) - Background color
-- **Shader Settings:**
-  - `base_vertex_shader_source` - Can be file path OR raw GLSL string
-  - `base_fragment_shader_source` - Can be file path OR raw GLSL string
-  - **Default shaders provided** if not specified (basic vertex color shader with camera UBO)
-- Supports aggregate initialization (C++20) or manual field assignment (C++17)
-- **CRITICAL:** Base shaders must be provided (or use defaults), constructor throws `EnGeneException` if empty
-
-**Default Base Shader:**
-The default shader includes:
-- Camera UBO binding (`CameraMatrices` with `view` and `projection`)
-- Dynamic model matrix uniform (`u_model`)
-- Vertex color pass-through
-- Proper matrix multiplication order: `projection * view * u_model * vertex`
-
-**InputHandler** - Type-safe GLFW input callback management
-- Template-based `registerCallback<InputType>()` method
-- Supports keyboard, mouse button, mouse movement, scroll
-- Clean abstraction over GLFW's C-style callbacks
-- Passed to EnGene constructor (takes ownership via unique_ptr)
-- Callbacks automatically applied to window during initialization
-
-### Namespace Organization & Singleton Access
+#### Namespace Organization & Singleton Access
 
 EnGene uses namespaces to organize functionality and provide clean singleton access:
 
@@ -559,45 +477,16 @@ EnGene uses namespaces to organize functionality and provide clean singleton acc
 **Singleton Access Pattern:**
 All major singletons use Meyers singleton pattern with free function access:
 ```cpp
-// Scene graph
 scene::graph()->addNode("name");
-
-// Shader stack
 shader::stack()->push(my_shader);
-shader::stack()->top();  // Activates and returns current shader
-
-// Transform stack
 transform::stack()->push(matrix);
-glm::mat4 model = transform::stack()->current();
-
-// Material stack
-material::stack()->push(my_material);
-
-// Texture stack
-texture::stack()->push(texture, unit);
-
-// Light manager
-light::manager().registerLight(light_component);
-
-// Global resource manager
-uniform::manager().registerResource(ubo);
-uniform::manager().applyPerFrame();
 ```
 
-**Provider Functions:**
-Many systems use provider functions for dynamic value resolution:
-```cpp
-// Transform provider (returns current model matrix)
-transform::current  // Function pointer, not a function call!
+**Design Rationale:**
+Free functions provide cleaner syntax than `ClassName::getInstance()`. Meyers singletons are thread-safe for initialization and avoid static initialization order issues.
 
-// Texture sampler provider
-texture::getSamplerProvider("u_texture")  // Returns provider function
 
-// Material property provider
-material::stack()->getProvider<glm::vec3>("ambient")
-```
-
-### Threading Model
+#### Threading Model
 
 **Single-Threaded Rendering:**
 - All OpenGL calls MUST occur on the main thread
@@ -611,7 +500,110 @@ material::stack()->getProvider<glm::vec3>("ambient")
 - Use mutexes if modifying scene graph from non-main threads
 - Consider double-buffering scene graph for async updates
 
-## 📜 C++ Coding Standards & Naming Conventions
+---
+
+## "Other Genes" Philosophy
+
+**For API usage, see:** [Project Structure in README.md](README.md#project-structure)
+
+### CoreGene vs Other Genes
+
+The `other_genes/` directory contains **derived code that is NOT intended to remain in this repository permanently**. CoreGene is dedicated exclusively to the most **nuclear and central abstractions** (scene graph, components, shaders, transforms, etc.). The "other genes" are **specific derivations** of these core abstractions.
+
+### What Belongs in CoreGene?
+
+**Core Abstractions (Keep in CoreGene):**
+- Scene graph infrastructure (`Node<T>`, `SceneGraph`, `SceneNodeBuilder`)
+- Component system (`Component`, `ComponentCollection`)
+- OpenGL wrappers (`Shader`, `Geometry`, `Texture`, `Transform`, `Material`)
+- Stack systems (`ShaderStack`, `TransformStack`, `MaterialStack`, `TextureStack`)
+- Camera base classes and core implementations
+- Light base classes and manager
+- Application framework (`EnGene`, `EnGeneConfig`)
+- Input handling infrastructure
+
+**Criteria for Core Abstractions:**
+1. **Fundamental** - Required by most applications using the engine
+2. **Abstract** - Defines interfaces and patterns, not specific implementations
+3. **Stable** - API unlikely to change frequently
+4. **Universal** - Applicable across different use cases
+
+
+### What Belongs in Other Genes?
+
+**Derived Implementations (Move to other_genes/):**
+- Specific geometric shapes (circles, polygons, spheres, cubes)
+- Textured shape variants
+- Input handler presets (arcball controller, FPS controller)
+- Utility classes (grid renderer, skybox)
+- Application-specific components
+
+**Criteria for Other Genes:**
+1. **Specific** - Concrete implementations of core abstractions
+2. **Optional** - Not required by all applications
+3. **Derived** - Built using core abstractions, not extending them
+4. **Extractable** - Can be moved to separate repository without breaking core
+
+### When to Extract into Separate Gene Repositories
+
+As the ecosystem matures, specific "genes" should be extracted into separate repositories:
+
+**Extraction Criteria:**
+1. **Maturity** - Code is stable and well-tested
+2. **Cohesion** - Related functionality forms a logical unit
+3. **Size** - Sufficient code to justify separate repository
+4. **Independence** - Can be versioned and released independently
+
+**Example Future Genes:**
+- `ShapeGene` - Collection of 2D/3D geometric primitives
+- `InputGene` - Advanced input handling and camera controllers
+- `PhysicsGene` - Physics integration components
+- `AudioGene` - Audio system integration
+- `UIGene` - User interface components
+
+### Guidelines for New Contributions
+
+**When adding new code, ask:**
+
+1. **Is this a core abstraction or a specific implementation?**
+   - Core abstraction → Add to appropriate core directory
+   - Specific implementation → Add to `other_genes/`
+
+2. **Does this extend the engine's capabilities or use existing capabilities?**
+   - Extends capabilities → Consider core directory
+   - Uses capabilities → Add to `other_genes/`
+
+3. **Will most applications need this?**
+   - Yes → Consider core directory
+   - No → Add to `other_genes/`
+
+4. **Is this application-specific?**
+   - Yes → Does NOT belong in CoreGene at all
+   - No → Proceed with contribution
+
+**Examples:**
+
+✅ **Core Directory:**
+- New component base class with lifecycle methods
+- New stack system for managing OpenGL state
+- Core camera implementation (orthographic, perspective)
+
+✅ **Other Genes Directory:**
+- Torus geometry implementation
+- Procedural terrain generator
+- Particle system component
+- Debug visualization utilities
+
+❌ **Does Not Belong:**
+- Game-specific logic (player controller, enemy AI)
+- Application UI (menus, HUD)
+- Asset management for specific game
+- Network code for multiplayer
+
+
+---
+
+## Coding Standards
 
 ### Naming Conventions
 
@@ -677,7 +669,9 @@ using TransformWeakPtr = std::weak_ptr<Transform>;
 - `std::unique_ptr` → `XXXXPtr` - For objects with exclusive ownership (components, internal state)
 - `std::weak_ptr` → `XXXXWeakPtr` - For non-owning references (parent pointers, observers)
 
+
 ### Header Include Order
+
 Since EnGene is a **header-only library**, follow this include order in your application `.cpp` files:
 
 1. C system headers
@@ -702,6 +696,7 @@ Since EnGene is a **header-only library**, follow this include order in your app
 ```
 
 ### Header-Only Library Guidelines
+
 **CRITICAL: EnGene is header-only. DO NOT create .cpp files for EnGene classes.**
 
 - All implementation must be in header files (`.h`)
@@ -733,10 +728,12 @@ Since EnGene is a **header-only library**, follow this include order in your app
 - Return references for chaining (builder pattern)
 
 ### Code Formatting
+
 - **Indentation:** 4 spaces (no tabs)
 - **Braces:** Opening brace on same line (K&R style)
 - **Line Length:** 120 characters maximum
 - **Pointer/Reference:** `Type* ptr` or `Type& ref` (asterisk/ampersand with type)
+
 
 ### Documentation Standards
 
@@ -780,7 +777,7 @@ public:
 - `@note` - Highlight important information or warnings
 - `@details` - Extended description for complex behavior
 - `@code` / `@endcode` - Include code examples
-- `@see` - Cross-reference related classes/methods
+- `@see` - Cross-reference related classes
 - `@throws` - Document exceptions that may be thrown
 
 **Documentation Examples from Codebase:**
@@ -816,7 +813,10 @@ EnGene(/* parameters */);
 - ❌ DON'T document private implementation details unless complex
 - ❌ DON'T duplicate information that's obvious from the code
 
-## ⚠️ Critical Rules & "Gotchas"
+
+---
+
+## Critical Rules & Gotchas
 
 ### DO NOT
 
@@ -875,7 +875,7 @@ EnGene(/* parameters */);
 12. **DO NOT add new third-party dependencies without approval**
     - Discuss with team first
     - Consider impact on build system and portability
-   - Consider impact on build system and portability
+
 
 ### ALWAYS
 
@@ -950,9 +950,13 @@ EnGene(/* parameters */);
 - Mismatch causes rendering artifacts or crashes
 - Default is 16 lights
 
-## 🔄 Workflow
+
+---
+
+## Development Workflow
 
 ### Commit Message Format
+
 Follow **Conventional Commits** specification:
 
 ```
@@ -985,6 +989,7 @@ refactor(component): simplify priority-based execution logic
 ```
 
 ### Branching Strategy
+
 - **main** - Stable, production-ready code
 - **develop** - Integration branch for features
 - **feature/<name>** - Feature development branches
@@ -1000,6 +1005,7 @@ refactor(component): simplify priority-based execution logic
 6. Periodically merge `develop` to `main` for releases
 
 ### Code Review Checklist
+
 - [ ] No .cpp files created for library code (header-only requirement)
 - [ ] All functions properly marked `inline` or defined in class body
 - [ ] Follows naming conventions
@@ -1013,7 +1019,18 @@ refactor(component): simplify priority-based execution logic
 - [ ] Documentation updated (if API changed)
 - [ ] Examples updated (if applicable)
 
-### Development Workflow
+### Pull Request Process
+
+1. **Create Branch:** Branch from `develop` with descriptive name
+2. **Implement Changes:** Make commits following commit message format
+3. **Test Thoroughly:** Run example applications, check for errors
+4. **Update Documentation:** Update README.md and AGENTS.md if needed
+5. **Open PR:** Provide clear description and testing notes
+6. **Address Feedback:** Respond to review comments, make requested changes
+7. **Merge:** Squash and merge once approved
+
+### Development Steps
+
 1. **Setup:** Clone repository, initialize submodules, build dependencies
 2. **Feature Development:** Create branch, implement feature, test with examples
 3. **Testing:** Run example applications, check for OpenGL errors
@@ -1028,3 +1045,4 @@ refactor(component): simplify priority-based execution logic
 **Last Updated:** 2025-11-04  
 **Version:** 1.0  
 **Maintainer:** EnGene Project Team
+

@@ -2,6 +2,65 @@
 
 EnGene is a modular, declarative C++ OpenGL abstraction library for developers who want full control over their graphics rendering pipeline. Build complex 2D/3D scenes using an intuitive scene graph architecture with an ECS-inspired component system.
 
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Minimal Working Example](#minimal-working-example)
+  - [Evolved Example with Other Genes](#evolved-example-with-other-genes)
+- [Core Concepts](#core-concepts)
+  - [Scene Graph](#scene-graph)
+  - [Component System](#component-system)
+  - [Transform Hierarchy](#transform-hierarchy)
+  - [Rendering Pipeline](#rendering-pipeline)
+- [API Reference](#api-reference)
+  - [Scene Management](#scene-management)
+    - [SceneGraph](#scenegraph)
+    - [SceneNode and SceneNodeBuilder](#scenenode-and-scenenodebuilder)
+  - [Component System](#component-system-1)
+    - [Component Base Class](#component-base-class)
+    - [ComponentCollection](#componentcollection)
+    - [Core Components](#core-components)
+  - [Rendering System](#rendering-system)
+    - [Shader](#shader)
+    - [ShaderStack](#shaderstack)
+    - [Geometry](#geometry)
+    - [Transform](#transform)
+    - [TransformStack](#transformstack)
+    - [Material](#material)
+    - [MaterialStack](#materialstack)
+    - [Texture](#texture)
+    - [TextureStack](#texturestack)
+  - [Lighting System](#lighting-system)
+    - [Light Types](#light-types)
+    - [LightManager](#lightmanager)
+  - [Camera System](#camera-system)
+    - [Camera (Base Class)](#camera-base-class)
+    - [OrthographicCamera](#orthographiccamera)
+    - [PerspectiveCamera](#perspectivecamera)
+  - [Application Framework](#application-framework)
+    - [EnGene](#engene)
+    - [EnGeneConfig](#engeneconfig)
+    - [InputHandler](#inputhandler)
+- [Advanced Topics](#advanced-topics)
+  - [Understanding Stack Systems](#understanding-stack-systems)
+  - [Component Priority System](#component-priority-system)
+  - [Uniform System Best Practices](#uniform-system-best-practices)
+  - [Uniform Location Invalidation](#uniform-location-invalidation)
+  - [Light Count Configuration](#light-count-configuration)
+- [Project Structure](#project-structure)
+- [Dependencies](#dependencies)
+- [Examples](#examples)
+  - [Solar System with Lighting](#solar-system-with-lighting)
+  - [Textured Quad](#textured-quad)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+  - [Getting More Help](#getting-more-help)
+- [Contributing](#contributing)
+- [License](#license)
+- [Links](#links)
+
 ## Key Features
 
 - **Declarative Scene Building** - Fluent API for intuitive scene construction
@@ -60,13 +119,20 @@ target_link_libraries(YourTarget
 
 **In your C++ code:**
 ```cpp
-#include <EnGene.h>  // Main header with all functionality
+#include <EnGene.h>                    // Main header with all functionality
+#include <core/scene_node_builder.h>  // REQUIRED for .addNode().with<>() syntax
+#include <components/all.h>            // REQUIRED for component types
 
 // Or include specific headers:
 #include "gl_base/shader.h"
 #include "core/scene.h"
-#include "components/all.h"
 ```
+
+> **⚠️ Critical Notes:**
+> - Always include `<core/scene_node_builder.h>` when using the fluent builder API
+> - Always include `<components/all.h>` to access component types
+> - Always call `glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)` at the start of your render callback
+> - Default shaders expect `vec4` for positions and colors (4 floats each)
 
 ### Minimal Working Example
 
@@ -74,16 +140,19 @@ Here's a complete example that creates a window and renders a colored triangle:
 
 ```cpp
 #include <EnGene.h>
+#include <core/scene_node_builder.h>  // Required for .addNode().with<>() syntax
+#include <components/all.h>            // Required for component types
 
 int main() {
     // Define initialization callback
     auto on_initialize = [](engene::EnGene& app) {
         // Create a simple triangle geometry
+        // Note: Default shader expects vec4 for positions and colors
         std::vector<float> vertices = {
-            // positions        // colors
-            0.0f,  0.5f,        1.0f, 0.0f, 0.0f,  // top (red)
-           -0.5f, -0.5f,        0.0f, 1.0f, 0.0f,  // bottom-left (green)
-            0.5f, -0.5f,        0.0f, 0.0f, 1.0f   // bottom-right (blue)
+            // positions (x, y, z, w)     // colors (r, g, b, a)
+            0.0f,  0.5f, 0.0f, 1.0f,      1.0f, 0.0f, 0.0f, 1.0f,  // top (red)
+           -0.5f, -0.5f, 0.0f, 1.0f,      0.0f, 1.0f, 0.0f, 1.0f,  // bottom-left (green)
+            0.5f, -0.5f, 0.0f, 1.0f,      0.0f, 0.0f, 1.0f, 1.0f   // bottom-right (blue)
         };
         std::vector<unsigned int> indices = {0, 1, 2};
         
@@ -91,8 +160,8 @@ int main() {
         auto triangle = geometry::Geometry::Make(
             vertices.data(), indices.data(), 
             3, 3,  // 3 vertices, 3 indices
-            2,     // 2 floats for position (x, y)
-            {3}    // 3 floats for color (r, g, b)
+            4,     // 4 floats for position (x, y, z, w) - vec4
+            {4}    // 4 floats for color (r, g, b, a) - vec4
         );
         
         // Build scene graph
@@ -107,6 +176,9 @@ int main() {
     
     // Define render callback
     auto on_render = [](double alpha) {
+        // CRITICAL: Always clear buffers before drawing
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
         // Draw the scene
         scene::graph()->draw();
     };
@@ -178,6 +250,7 @@ int main() {
     };
     
     auto on_render = [](double alpha) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         scene::graph()->draw();
     };
     
@@ -265,6 +338,7 @@ The rendering pipeline follows a well-defined flow:
 ```cpp
 // Typical rendering flow in your render callback
 auto on_render = [](double alpha) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // REQUIRED: Clear buffers
     scene::graph()->draw();  // Traverses and renders entire scene
 };
 ```
@@ -1352,7 +1426,7 @@ auto on_fixed_update = [](double dt) {
 };
 
 auto on_render = [](double alpha) {
-    // Render scene
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     scene::graph()->draw();
 };
 
@@ -1769,6 +1843,7 @@ int main() {
     };
     
     auto on_render = [](double alpha) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         scene::graph()->draw();
     };
     
@@ -1827,6 +1902,7 @@ int main() {
     auto on_fixed_update = [](double dt) {};
     
     auto on_render = [](double alpha) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         scene::graph()->draw();
     };
     
@@ -1839,6 +1915,59 @@ int main() {
     return 0;
 }
 ```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Black Screen / Nothing Renders**
+
+Problem: Window opens but shows only a black screen, not the clear color, nor the geometry is visible.
+
+Solution: Add `glClear()` at the start of your render callback:
+```cpp
+auto on_render = [](double alpha) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Add this!
+    scene::graph()->draw();
+};
+```
+
+**Compilation Error: "Incomplete type SceneNodeBuilder"**
+
+Problem: Using `.addNode().with<>()` syntax causes compilation errors.
+
+Solution: Include the scene node builder header:
+```cpp
+#include <EnGene.h>
+#include <core/scene_node_builder.h>  // Add this!
+#include <components/all.h>
+```
+
+**Compilation Error: "GeometryComponent is not a member of component"**
+
+Problem: Component types are not recognized.
+
+Solution: Include the components header:
+```cpp
+#include <components/all.h>  // Add this!
+```
+
+**CMake Generator Error on Windows**
+
+Problem: CMake fails with "CMAKE_C_COMPILER not set" on MinGW systems.
+
+Solution: Specify the MinGW Makefiles generator:
+```bash
+cmake -B build -G "MinGW Makefiles"
+```
+
+### Getting More Help
+
+- See [test/README.md](test/README.md) for detailed pitfalls and solutions
+- Check [AGENTS.md](AGENTS.md) Quick Troubleshooting section
+- Review working examples in `test/simple_test.cpp` and `test/main.cpp`
 
 ---
 

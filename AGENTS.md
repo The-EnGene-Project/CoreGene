@@ -4,6 +4,77 @@
 
 ---
 
+## Table of Contents
+
+- [Quick Troubleshooting](#quick-troubleshooting)
+- [Project Overview](#project-overview)
+  - [Key Dependencies](#key-dependencies)
+- [Development Environment Setup](#development-environment-setup)
+  - [Build System](#build-system)
+  - [Build Commands](#build-commands)
+  - [Dependency Management](#dependency-management)
+  - [Platform-Specific Notes](#platform-specific-notes)
+  - [Including EnGene in Your Project](#including-engene-in-your-project)
+- [Testing Protocol](#testing-protocol)
+  - [Testing Framework](#testing-framework)
+  - [Setting Up a Test Project](#setting-up-a-test-project)
+  - [Running Tests](#running-tests)
+  - [Test File Structure](#test-file-structure)
+- [Core Architecture & Design Philosophy](#core-architecture--design-philosophy)
+  - [Resource Management Philosophy](#resource-management-philosophy)
+  - [OpenGL Wrapper Philosophy](#opengl-wrapper-philosophy)
+  - [Error Handling](#error-handling)
+- [Architecture Deep Dive](#architecture-deep-dive)
+  - [Scene Graph Architecture](#scene-graph-architecture)
+  - [Component System Architecture](#component-system-architecture)
+  - [Rendering System Architecture](#rendering-system-architecture)
+  - [Observer Pattern Implementation](#observer-pattern-implementation)
+  - [Namespace Organization & Singleton Access](#namespace-organization--singleton-access)
+  - [Threading Model](#threading-model)
+- ["Other Genes" Philosophy](#other-genes-philosophy)
+  - [CoreGene vs Other Genes](#coregene-vs-other-genes)
+  - [What Belongs in CoreGene?](#what-belongs-in-coregene)
+  - [What Belongs in Other Genes?](#what-belongs-in-other-genes)
+  - [When to Extract into Separate Gene Repositories](#when-to-extract-into-separate-gene-repositories)
+  - [Guidelines for New Contributions](#guidelines-for-new-contributions)
+- [Coding Standards](#coding-standards)
+  - [Naming Conventions](#naming-conventions)
+  - [Header Include Order](#header-include-order)
+  - [Header-Only Library Guidelines](#header-only-library-guidelines)
+  - [Pointers & References](#pointers--references)
+  - [Code Formatting](#code-formatting)
+  - [Documentation Standards](#documentation-standards)
+- [Critical Rules & Gotchas](#critical-rules--gotchas)
+  - [DO NOT](#do-not)
+  - [ALWAYS](#always)
+  - [Common Gotchas](#common-gotchas)
+  - [Common Integration Pitfalls (From Testing)](#common-integration-pitfalls-from-testing)
+- [Development Workflow](#development-workflow)
+  - [Commit Message Format](#commit-message-format)
+  - [Branching Strategy](#branching-strategy)
+  - [Code Review Checklist](#code-review-checklist)
+  - [Pull Request Process](#pull-request-process)
+  - [Development Steps](#development-steps)
+
+---
+
+## Quick Troubleshooting
+
+**Compilation Errors:**
+- "Incomplete type SceneNodeBuilder" → Include `<core/scene_node_builder.h>`
+
+**Black Screen Issues:**
+- Add `glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)` in render callback
+- Check if custom shader has `u_model` uniform configured
+
+**Build Issues:**
+- On Windows MinGW: Use `cmake -B build -G "MinGW Makefiles"`
+- Multiple GLAD definitions: Don't include GLAD separately when using `EnGene.h`
+
+**See [Common Integration Pitfalls](#common-integration-pitfalls-from-testing) for detailed solutions.**
+
+---
+
 ## Project Overview
 
 **EnGene** is a modular, declarative C++ OpenGL abstraction library designed for developers who want full control over their graphics rendering pipeline. The library provides a scene graph architecture with an ECS-inspired component system, hierarchical transforms, and a sophisticated 4-tier uniform management system.
@@ -259,8 +330,7 @@ This enables the modern debug callback system. If debug context creation fails, 
 - Shows function names, file paths, and line numbers
 
 **Exception Hierarchy:**
-- `exception::BaseException` - Base class for all engine exceptions
-- `exception::EnGeneException` - Engine initialization errors
+- `exception::EnGeneException` - Base class for all engine exceptions (inherits from `std::runtime_error`)
 - `exception::ShaderException` - Shader compilation/linking errors
 - `exception::NodeNotFoundException` - Scene graph lookup failures
 
@@ -949,6 +1019,63 @@ EnGene(/* parameters */);
 - C++ `MAX_SCENE_LIGHTS` must match GLSL definition exactly
 - Mismatch causes rendering artifacts or crashes
 - Default is 16 lights
+
+### Common Integration Pitfalls (From Testing)
+
+These are real issues encountered during environment configuration testing:
+
+**1. Missing SceneNodeBuilder Header:**
+```cpp
+// ❌ WRONG - Causes "incomplete type" errors
+#include <EnGene.h>
+scene::graph()->addNode("Node").with<Component>();  // Compilation error!
+
+// ✅ CORRECT - Include the builder header
+#include <EnGene.h>
+#include <core/scene_node_builder.h>  // Required for fluent API
+#include <components/all.h>
+scene::graph()->addNode("Node").with<Component>();  // Works!
+```
+
+**2. Custom Shader Uniform Configuration:**
+```cpp
+// ❌ WRONG - u_model not configured for custom shaders
+config.base_vertex_shader_source = custom_vertex_shader;
+engene::EnGene app(on_init, on_update, on_render, config);
+app.run();  // Warning: u_model not configured!
+
+// ✅ CORRECT - Configure u_model after construction
+engene::EnGene app(on_init, on_update, on_render, config);
+
+// Can also be configured in the on_init lambda
+auto shader = app.getBaseShader();
+shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
+app.run();
+```
+
+**3. Missing Buffer Clear in Render Callback:**
+```cpp
+// ❌ WRONG - Black screen, buffers not cleared
+auto on_render = [](double alpha) {
+    scene::graph()->draw();  // Nothing visible!
+};
+
+// ✅ CORRECT - Always clear buffers
+auto on_render = [](double alpha) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    scene::graph()->draw();
+    GL_CHECK("render");  // Optional but recommended
+};
+```
+
+**4. CMake Generator on Windows:**
+```bash
+# ❌ WRONG - Default generator may fail on MinGW systems
+cmake -B build
+
+# ✅ CORRECT - Specify MinGW Makefiles
+cmake -B build -G "MinGW Makefiles"
+```
 
 
 ---

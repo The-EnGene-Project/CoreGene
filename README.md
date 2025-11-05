@@ -8,20 +8,50 @@ for adding compatibility with different graphic APIs like Vulkan and DirectX.
 
 ### How to include this library in your project
 
-Using CMake:
-```cmake
-include(FetchContent)
+**EnGene is a header-only library** - no compilation required, just include the headers!
 
-FetchContent_Declare(
-  CoreGene 
-  GIT_REPOSITORY https://github.com/The-EnGene-Project/CoreGene.git
-  GIT_TAG        main # Or a specific commit hash or release tag like v1.2.0
+**Method 1: Git Submodule (Recommended)**
+```bash
+# Add EnGene as a submodule to your project
+git submodule add https://github.com/The-EnGene-Project/CoreGene.git external/CoreGene
+git submodule update --init --recursive
+```
+
+Then in your `CMakeLists.txt`:
+```cmake
+# Add EnGene include directory
+target_include_directories(YourTarget PRIVATE
+    "${CMAKE_SOURCE_DIR}/external/CoreGene/core_gene/src"
 )
 
-FetchContent_MakeAvailable(CoreGene)
-FetchContent_GetProperties(CoreGene)
+# Link required dependencies (GLFW, GLAD, GLM, STB)
+target_include_directories(YourTarget PRIVATE
+    "${CMAKE_SOURCE_DIR}/libs/glad/include"
+    "${CMAKE_SOURCE_DIR}/libs/glfw/include"
+    "${CMAKE_SOURCE_DIR}/libs/glm/include"
+    "${CMAKE_SOURCE_DIR}/libs/stb/include"
+)
 
-include_directory(${CoreGene_SOURCE_DIR}/src)
+# Link GLFW and OpenGL
+target_link_libraries(YourTarget
+    glfw
+    opengl32  # Windows: opengl32.lib, Linux: -lGL, macOS: -framework OpenGL
+)
+```
+
+**Method 2: Manual Copy**
+1. Download or clone the CoreGene repository
+2. Copy the `core_gene/src` directory to your project
+3. Add the include path to your CMakeLists.txt as shown above
+
+**In your C++ code:**
+```cpp
+#include <EnGene.h>  // Main header with all functionality
+
+// Or include specific headers:
+#include "gl_base/shader.h"
+#include "core/scene.h"
+#include "components/all.h"
 ```
 
 ---
@@ -64,7 +94,7 @@ Wraps a `Geometry` object and calls its `Draw()` method during `apply()`. Has th
 Overrides the default shader for a node and its subtree. Pushes the custom shader onto the shader stack during `apply()`, pops during `unapply()`. This allows per-object shader customization (e.g., textured objects, lit objects, special effects). The shader stack's lazy activation means the shader isn't actually bound until `shader::stack()->top()` is called by a GeometryComponent.
 
 **TextureComponent**
-Binds a texture to a specific texture unit and registers the sampler name with the texture stack. During `apply()`, pushes the texture onto the stack and registers the sampler-to-unit mapping. During `unapply()`, pops the texture and unregisters the sampler. This enables shader uniforms to dynamically query the correct texture unit via `texture::getUnitProvider()`. Supports multiple textures per node on different units.
+Binds a texture to a specific texture unit and registers the sampler name with the texture stack. During `apply()`, pushes the texture onto the stack and registers the sampler-to-unit mapping. During `unapply()`, pops the texture and unregisters the sampler. This enables shader uniforms to dynamically query the correct texture unit via `texture::getSamplerProvider()`. Supports multiple textures per node on different units.
 
 **MaterialComponent**
 Pushes a material onto the material stack during `apply()`, pops during `unapply()`. Materials define PBR properties (ambient, diffuse, specular, shininess) that merge hierarchically. Child nodes inherit parent material properties but can override specific values. The material stack uses provider functions to supply uniform values, enabling dynamic material changes without shader reconfiguration.
@@ -395,7 +425,7 @@ uniform::UBO<CameraMatrices>::Make("CameraMatrices", ...);
 - Applied when shader becomes active
 - For values that don't change during shader use (texture units)
 ```cpp
-shader->configureStaticUniform<int>("tex", texture::getUnitProvider("tex"));
+shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture", texture::getSamplerProvider("u_texture"));
 ```
 
 **Tier 3: Dynamic Uniforms (Per-Draw)**
@@ -591,7 +621,33 @@ texture::stack()->pop();                     // Back to: {0 -> tex1, 1 -> tex2}
                                              // Only unit 0 is rebound (tex3 -> tex1)
 ```
 
-**Sampler Registration:** TextureComponent registers sampler names during `apply()` and unregisters during `unapply()`. The `getUnitProvider()` function returns a provider lambda that queries the texture stack for the current unit associated with a sampler name. This provider is used by shader uniforms to dynamically resolve texture units at render time.
+**Sampler Registration:** TextureComponent registers sampler names during `apply()` and unregisters during `unapply()`. The `texture::getSamplerProvider()` function returns a type-safe provider lambda that queries the texture stack for the current unit associated with a sampler name. This provider is used by shader uniforms to dynamically resolve texture units at render time.
+
+**Example Usage:**
+```cpp
+// Create a shader and configure it to use a texture sampler
+auto textured_shader = shader::Shader::Make(
+    "shaders/textured_vertex.glsl",
+    "shaders/textured_fragment.glsl"
+)
+->configureDynamicUniform<glm::mat4>("u_model", transform::current)
+->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture", 
+    texture::getSamplerProvider("u_texture"));
+// The provider returns a Sampler2D struct containing the texture unit
+// This is type-safe and distinguishes samplers from regular integers
+
+// Later, in your scene graph, TextureComponent binds the texture and registers the sampler
+scene::graph()->addNode("TexturedQuad")
+    .with<component::ShaderComponent>(textured_shader)
+    .with<component::TextureComponent>(
+        texture::Texture::Make("path/to/texture.png"),
+        "u_texture",  // Sampler name - matches the shader uniform
+        0             // Texture unit
+    )
+    .with<component::GeometryComponent>(quad_geometry);
+// When this node is rendered, the TextureComponent registers "u_texture" -> unit 0
+// The shader's uniform provider queries this mapping and returns Sampler2D{0}
+```
 
 **Protected Base:** Cannot pop below the empty base state at index 0.
 

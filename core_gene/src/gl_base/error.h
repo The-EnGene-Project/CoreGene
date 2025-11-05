@@ -13,7 +13,9 @@
 #include <iostream>
 #include <iomanip>
 #include <cstdint> // For uint64_t
+#ifdef _WIN32
 #include <backtrace.h> // The libbacktrace header
+#endif
 
 // Data to pass to our callback
 struct BacktraceState {
@@ -21,6 +23,7 @@ struct BacktraceState {
     int frame_num;
 };
 
+#ifdef _WIN32
 // Callback for backtrace_full
 // This is called for every frame
 static int backtrace_callback(void* data, uintptr_t pc,
@@ -53,8 +56,10 @@ static void my_backtrace_error_callback(void* data, const char* msg, int errnum)
     std::cerr << "libbacktrace error: " << msg << " (" << errnum << ")\n";
     state->error = 1;
 }
+#endif
 
 static void print_stacktrace() {
+    #ifdef _WIN32
     BacktraceState state = {0, 0};
     
     // 1. Initialize the backtrace state
@@ -82,6 +87,7 @@ static void print_stacktrace() {
     std::cerr << "------------------------------------" << std::endl;
     
     // backtrace_create_state returns NULL on error, no need to free
+    #endif
 }
 
 class Error {

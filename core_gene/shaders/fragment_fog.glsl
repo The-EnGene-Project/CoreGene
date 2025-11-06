@@ -51,6 +51,10 @@ uniform bool u_hasNormalMap;
 uniform bool u_hasRoughnessMap;
 uniform bool u_hasDiffuseMap;
 
+// === Fog uniforms ===
+uniform vec3 fcolor;     // cor da fog
+uniform float fdensity;  // densidade da fog
+
 // ======================================================
 // --- calcula TBN no fragment shader a partir das normais e tangentes interpoladas ---
 mat3 computeTBN(vec3 normal, vec3 tangent)
@@ -59,7 +63,6 @@ mat3 computeTBN(vec3 normal, vec3 tangent)
     vec3 bitangent = normalize(cross(normal, tangent));
     return mat3(tangent, bitangent, normal);
 }
-
 
 void main()
 {
@@ -140,5 +143,11 @@ void main()
         totalLight += (ambient + diffuse + specular) * attenuation;
     }
 
-    FragColor = vec4(totalLight, 1.0);
+    // === Fog ===
+    float distance = length(u_viewPos.xyz - v_fragPos);
+    float fogFactor = exp(-pow(fdensity * distance, 2.0));
+    fogFactor = clamp(fogFactor, 0.0, 1.0);
+
+    vec3 finalColor = mix(fcolor, totalLight, fogFactor);
+    FragColor = vec4(finalColor, 1.0);
 }

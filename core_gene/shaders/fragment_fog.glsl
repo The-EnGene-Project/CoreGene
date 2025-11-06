@@ -7,7 +7,7 @@ in vec3 v_normal;
 in vec3 v_tangent;
 in vec2 v_texCoord;
 
-// ========== Definições da cena ==========
+// === Definições da cena ===
 #define MAX_SCENE_LIGHTS 16
 #define LIGHT_TYPE_INACTIVE    0
 #define LIGHT_TYPE_DIRECTIONAL 1
@@ -28,6 +28,7 @@ struct Light {
     float outerCutOff;
 };
 
+// === Uniforms ===
 uniform Light u_lights[MAX_SCENE_LIGHTS];
 uniform int u_lightCount;
 
@@ -39,9 +40,11 @@ uniform bool u_hasRoughnessMap;
 
 uniform vec3 u_viewPos;
 
-// =============================================================
-// Monta TBN a partir da normal e tangente interpoladas
-// =============================================================
+// === Fog uniforms ===
+uniform vec3 fcolor;     // cor da fog
+uniform float fdensity;  // densidade da fog
+
+// === Funções auxiliares ===
 mat3 computeTBN(vec3 normal, vec3 tangent)
 {
     tangent = normalize(tangent - normal * dot(normal, tangent));
@@ -49,9 +52,7 @@ mat3 computeTBN(vec3 normal, vec3 tangent)
     return mat3(tangent, bitangent, normal);
 }
 
-// =============================================================
-// Cálculo de iluminação completa
-// =============================================================
+// === Cálculo de iluminação completa ===
 vec3 applyLighting(vec3 norm, vec3 viewDir, vec3 fragPos, vec3 albedo, float roughness)
 {
     vec3 result = vec3(0.0);
@@ -114,9 +115,6 @@ vec3 applyLighting(vec3 norm, vec3 viewDir, vec3 fragPos, vec3 albedo, float rou
     return result;
 }
 
-// =============================================================
-// Função principal
-// =============================================================
 void main()
 {
     vec3 normal = normalize(v_normal);
@@ -133,7 +131,13 @@ void main()
     float roughness = u_hasRoughnessMap ? texture(u_roughnessMap, v_texCoord).r : 0.5;
 
     vec3 viewDir = normalize(u_viewPos - v_fragPos);
-    vec3 color = applyLighting(normal, viewDir, v_fragPos, albedo, roughness);
+    vec3 lighting = applyLighting(normal, viewDir, v_fragPos, albedo, roughness);
 
-    FragColor = vec4(color, 1.0);
+    // === Fog ===
+    float distance = length(u_viewPos - v_fragPos);
+    float fogFactor = exp(-pow(fdensity * distance, 2.0));
+    fogFactor = clamp(fogFactor, 0.0, 1.0);
+
+    vec3 finalColor = mix(fcolor, lighting, fogFactor);
+    FragColor = vec4(finalColor, 1.0);
 }

@@ -372,7 +372,7 @@ inline void EnvironmentMapping::initializeShaders() {
         [this]() { return m_config.base_color; });
     
     // Configure cubemap texture uniform using sampler provider
-    m_reflection_shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_environmentMap",
+    m_reflection_shader->configureDynamicUniform<uniform::detail::Sampler>("u_environmentMap",
         texture::getSamplerProvider("environmentMap"));
     
     // Bake the shader to link and bind UBOs
@@ -397,7 +397,7 @@ inline void EnvironmentMapping::initializeShaders() {
         [this]() { return m_config.base_color; });
     
     // Configure cubemap texture uniform using sampler provider
-    m_refraction_shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_environmentMap",
+    m_refraction_shader->configureDynamicUniform<uniform::detail::Sampler>("u_environmentMap",
         texture::getSamplerProvider("environmentMap"));
     
     // Bake the shader
@@ -424,7 +424,7 @@ inline void EnvironmentMapping::initializeShaders() {
         [this]() { return m_config.base_color; });
     
     // Configure cubemap texture uniform using sampler provider
-    m_fresnel_shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_environmentMap",
+    m_fresnel_shader->configureDynamicUniform<uniform::detail::Sampler>("u_environmentMap",
         texture::getSamplerProvider("environmentMap"));
     
     // Bake the shader
@@ -449,7 +449,7 @@ inline void EnvironmentMapping::initializeShaders() {
         [this]() { return m_config.base_color; });
     
     // Configure cubemap texture uniform using sampler provider
-    m_chromatic_shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_environmentMap",
+    m_chromatic_shader->configureDynamicUniform<uniform::detail::Sampler>("u_environmentMap",
         texture::getSamplerProvider("environmentMap"));
     
     // Bake the shader

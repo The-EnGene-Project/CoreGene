@@ -12,17 +12,16 @@
 
 namespace uniform {
 
-// Forward declare Sampler2D
-namespace detail {
-    struct Sampler2D;
-}
+// Note: Sampler types are defined in uniform.h
+// No forward declarations needed since uniform.h is included before this file in shader.h
 
 // A variant type to hold any of the supported uniform data types.
+// This is used for queuing uniform updates when a shader is not active.
 using UniformData = std::variant<
     int, float,
     glm::vec2, glm::vec3, glm::vec4,
     glm::mat3, glm::mat4,
-    detail::Sampler2D
+    detail::Sampler     // Generic sampler for all sampler types
 >;
 
 /**
@@ -65,7 +64,7 @@ struct PendingUniformCommand {
                 glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(arg));
             } else if constexpr (std::is_same_v<T, glm::mat4>) {
                 glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(arg));
-            } else if constexpr (std::is_same_v<T, detail::Sampler2D>) {
+            } else if constexpr (std::is_same_v<T, detail::Sampler>) {
                 glUniform1i(location, arg.unit);
             }
         }, data);

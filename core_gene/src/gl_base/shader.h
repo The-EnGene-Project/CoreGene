@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <functional>
 #include <any>
 #include <variant>
@@ -65,6 +66,9 @@ private:
     // Tier 4: State and queue for immediate-mode uniforms.
     bool m_is_currently_active_in_GL = false;
     std::vector<uniform::PendingUniformCommand> m_pending_uniform_queue;
+    
+    // Set of uniform names to silence validation warnings for
+    std::unordered_set<std::string> m_silenced_uniforms;
 
     /**
      * @brief Helper to check if a string is likely a file path.
@@ -161,7 +165,7 @@ private:
             glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(value));
         } else if constexpr (std::is_same_v<T, glm::mat4>) {
             glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
-        } else if constexpr (std::is_same_v<T, uniform::detail::Sampler2D>) {
+        } else if constexpr (std::is_same_v<T, uniform::detail::Sampler>) {
             glUniform1i(location, value.unit);
         }
     }
@@ -239,6 +243,9 @@ protected:
                 }
             }
 
+            // Check if this uniform is silenced
+            bool is_silenced = m_silenced_uniforms.find(uniform_name) != m_silenced_uniforms.end();
+            
             if (configured_uniform) {
                 // This uniform IS configured in C++.
                 // Your "Dead Uniform" check in `findLocation` already caught any with location == -1.
@@ -246,14 +253,23 @@ protected:
                 GLenum cpp_type = configured_uniform->getCppType();
 
                 // Note: GL_NONE means our C++ type trait didn't recognize the type.
-                if (cpp_type != GL_NONE && cpp_type != glsl_type) {
+                // Special case: uniform::detail::Sampler (generic) works for all sampler types
+                bool is_sampler_mismatch = false;
+                if (cpp_type == GL_SAMPLER_2D && (glsl_type == GL_SAMPLER_2D || glsl_type == GL_SAMPLER_CUBE)) {
+                    // Generic Sampler type is compatible with both sampler2D and samplerCube
+                    is_sampler_mismatch = false;
+                } else if (cpp_type != GL_NONE && cpp_type != glsl_type) {
+                    is_sampler_mismatch = true;
+                }
+                
+                if (is_sampler_mismatch && !is_silenced) {
                     // TYPE MISMATCH!
                     std::cerr << "Warning: Uniform type mismatch for '" << uniform_name << "'. "
                             << "GLSL expects type [" << GLenumToString(glsl_type) << "] but "
                             << "C++ is configured as [" << GLenumToString(cpp_type) << "]."
                             << std::endl;
                 }
-            } else {
+            } else if (!is_silenced) {
                  std::cout << "Info: Active uniform '" << uniform_name  
                            << "' (type: " << GLenumToString(glsl_type) << ")"
                            << "' is in the shader but not configured as a static or dynamic uniform." 
@@ -304,8 +320,8 @@ public:
             else if (const auto* provider = std::any_cast<std::function<glm::mat4()>>(&any_provider)) {
                 shader->configureDynamicUniform<glm::mat4>(name, *provider);
             }
-            else if (const auto* provider = std::any_cast<std::function<uniform::detail::Sampler2D()>>(&any_provider)) {
-                shader->configureDynamicUniform<uniform::detail::Sampler2D>(name, *provider);
+            else if (const auto* provider = std::any_cast<std::function<uniform::detail::Sampler()>>(&any_provider)) {
+                shader->configureDynamicUniform<uniform::detail::Sampler>(name, *provider);
             }
             else {
                 std::cerr << "Warning: Uniform '" << name << "' has an unsupported type in Make function." << std::endl;
@@ -447,12 +463,12 @@ public:
     /**
      * @brief Configures a dynamic uniform that will be applied every draw call.
      * 
-     * Supported types: int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat3, glm::mat4, uniform::detail::Sampler2D
+     * Supported types: int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat3, glm::mat4, uniform::detail::Sampler
      * 
-     * Example for sampler2D:
+     * Example for samplers:
      * @code
-     * shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture", 
-     *     []() { return uniform::detail::Sampler2D{0}; });
+     * shader->configureDynamicUniform<uniform::detail::Sampler>("u_texture", 
+     *     texture::getSamplerProvider("u_texture"));
      * @endcode
      */
     template<typename T>
@@ -493,7 +509,8 @@ public:
     }
     
     /**
-     * @brief Convenience method to set a sampler2D uniform to a texture unit.
+     * @brief Convenience method to set a sampler uniform to a texture unit.
+     * Works for all sampler types (sampler2D, samplerCube, etc.).
      * @param name The name of the sampler uniform in the shader.
      * @param texture_unit The texture unit index (0-31 typically).
      * 
@@ -503,7 +520,27 @@ public:
      * @endcode
      */
     void setSampler(const std::string& name, int texture_unit) {
-        setUniform(name, uniform::detail::Sampler2D{texture_unit});
+        setUniform(name, uniform::detail::Sampler{texture_unit});
+    }
+    
+    /**
+     * @brief Silences validation warnings for a specific uniform.
+     * 
+     * Use this to suppress warnings for uniforms that are intentionally not configured
+     * or have expected type mismatches (e.g., uniforms set via immediate mode).
+     * 
+     * @param uniform_name The name of the uniform to silence warnings for.
+     * @return Reference to this shader for method chaining.
+     * 
+     * Example:
+     * @code
+     * shader->silenceUniform("u_viewProjection")
+     *       ->silenceUniform("u_model");
+     * @endcode
+     */
+    ShaderPtr silenceUniform(const std::string& uniform_name) {
+        m_silenced_uniforms.insert(uniform_name);
+        return shared_from_this();
     }
 
     // --- Shader Activation ---

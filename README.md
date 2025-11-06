@@ -779,7 +779,7 @@ shader->configureDynamicUniform<glm::vec3>("u_material.ambient",
     material::stack()->getProvider<glm::vec3>("ambient"));
 
 // Texture samplers
-shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture",
+shader->configureDynamicUniform<uniform::detail::Sampler>("u_texture",
     texture::getSamplerProvider("u_texture"));
 ```
 
@@ -1166,7 +1166,7 @@ void registerSampler(const std::string& sampler_name, unsigned int unit);
 void unregisterSampler(const std::string& sampler_name);
 
 // Get sampler provider for shader uniforms
-std::function<uniform::detail::Sampler2D()> getSamplerProvider(const std::string& sampler_name);
+std::function<uniform::detail::Sampler()> getSamplerProvider(const std::string& sampler_name);
 ```
 
 **Important Considerations:**
@@ -1922,7 +1922,7 @@ int main() {
                 shader::Shader::Make("shaders/textured_vertex.glsl",
                                     "shaders/textured_fragment.glsl")
                     ->configureDynamicUniform<glm::mat4>("u_model", transform::current)
-                    ->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture",
+                    ->configureDynamicUniform<uniform::detail::Sampler>("u_texture",
                         texture::getSamplerProvider("u_texture"))
             )
             .with<component::TextureComponent>(

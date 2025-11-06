@@ -59,8 +59,11 @@ protected:
         );
         
         // Configure cubemap sampler uniform using cubemap sampler provider
-        m_skybox_shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_skybox",
+        m_skybox_shader->configureDynamicUniform<uniform::detail::Sampler>("u_skybox",
             texture::getSamplerProvider("skybox"));
+        
+        // Silence validation warnings for uniforms set via immediate mode (Tier 4)
+        m_skybox_shader->silenceUniform("u_viewProjection");
         
         // Bake the shader to ensure it's ready
         m_skybox_shader->Bake();

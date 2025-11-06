@@ -97,6 +97,27 @@ protected:
         // Use helper to load and configure the texture
         LoadAndConfigureTexture(m_tid, filename, m_width, m_height);
     }
+
+    Texture(int width, int height, unsigned char* data) : m_width(width), m_height(height) {
+        glGenTextures(1, &m_tid);
+        GL_CHECK("generate texture");
+
+        if (m_tid == 0) {
+            std::cerr << "Could not create texture object" << std::endl;
+            return;
+        }
+
+        glBindTexture(GL_TEXTURE_2D, m_tid);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 public:
     static TexturePtr Make(const std::string& filename) {
         // 1. Check if the texture is already in our cache.
@@ -115,6 +136,10 @@ public:
 
         // 4. Return the new texture.
         return new_texture;
+    }
+
+    static TexturePtr Make(int width, int height, unsigned char* data) {
+        return TexturePtr(new Texture(width, height, data));
     }
     ~Texture() {
         glDeleteTextures(1, &m_tid);

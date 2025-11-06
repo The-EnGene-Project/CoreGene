@@ -132,18 +132,6 @@ public:
     }
 
     /**
-     * @brief Updates the component's transform cache during scene traversal.
-     * 
-     * This method is called during scene traversal and updates the world transform
-     * cache by calling the parent class implementation.
-     */
-    void apply() override {
-        // Update transform cache by calling parent implementation
-        ObservedTransformComponent::apply();
-        // Light data extraction happens in LightManager::apply()
-    }
-
-    /**
      * @brief Get the type name of this component.
      * 
      * @return "LightComponent"

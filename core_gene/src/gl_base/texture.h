@@ -23,6 +23,18 @@
 
 namespace texture {
 
+// Base interface for all texture types
+class ITexture {
+public:
+    virtual ~ITexture() = default;
+    virtual void Bind(GLuint unit = 0) const = 0;
+    virtual void Unbind(GLuint unit = 0) const = 0;
+    virtual GLuint GetTextureID() const = 0;
+    virtual GLenum GetTextureTarget() const = 0;
+};
+
+using ITexturePtr = std::shared_ptr<ITexture>;
+
 class Texture;
 using TexturePtr = std::shared_ptr<Texture>;
 
@@ -76,7 +88,7 @@ static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int
 }
 
 
-class Texture {
+class Texture : public ITexture {
 private:
     GLuint m_tid;
     int m_width;
@@ -144,17 +156,23 @@ public:
     ~Texture() {
         glDeleteTextures(1, &m_tid);
     }
-    void Bind(GLuint unit = 0) const {
+    
+    // ITexture interface implementation
+    void Bind(GLuint unit = 0) const override {
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_2D, m_tid);
     }
-    void Unbind(GLuint unit = 0) const {
+    void Unbind(GLuint unit = 0) const override {
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    GLuint GetTextureID() const {
+    GLuint GetTextureID() const override {
         return m_tid;
+    }
+    
+    GLenum GetTextureTarget() const override {
+        return GL_TEXTURE_2D;
     }
 
     int GetWidth() const {
@@ -173,12 +191,12 @@ private:
     // This is the core of the state machine.
     // It's a stack of maps. Each map represents the complete texture state
     // (all active units) at that point in the scene graph.
-    std::vector<std::unordered_map<GLuint, TexturePtr>> m_stack;
+    std::vector<std::unordered_map<GLuint, ITexturePtr>> m_stack;
     // This map links a sampler uniform name to a texture unit.
     std::unordered_map<std::string, GLuint> m_sampler_to_unit_map;
 
     // This map tracks the ACTUAL state on the GPU to prevent redundant calls.
-    std::unordered_map<GLuint, TexturePtr> m_active_gpu_state;
+    std::unordered_map<GLuint, ITexturePtr> m_active_gpu_state;
 
     TextureStack() {
         // Start with a base level on the stack representing the default (empty) state.
@@ -190,7 +208,7 @@ public:
     TextureStack(const TextureStack&) = delete;
     TextureStack& operator=(const TextureStack&) = delete;
 
-    TexturePtr top() {
+    ITexturePtr top() {
         if (m_stack.empty()) {
             return nullptr;
         }
@@ -202,7 +220,7 @@ public:
     }
 
     // The intelligent push operation.
-    void push(TexturePtr texture, GLuint unit = 0) {
+    void push(ITexturePtr texture, GLuint unit = 0) {
         // 1. Get the state from the previous level of the stack.
         auto new_state = m_stack.back();
         // 2. Modify it with the new texture.

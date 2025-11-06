@@ -40,6 +40,7 @@ int main() {
     std::shared_ptr<environment::EnvironmentMapping> env_mapping1;
     std::shared_ptr<environment::EnvironmentMapping> env_mapping2;
     std::shared_ptr<environment::EnvironmentMapping> env_mapping3;
+    std::shared_ptr<environment::EnvironmentMapping> env_mapping4;
     
     auto* handler = new input::InputHandler();
     std::shared_ptr<arcball::ArcBallInputHandler> arcball_handler;
@@ -93,7 +94,7 @@ int main() {
         environment::EnvironmentMappingConfig config1;
         config1.cubemap = cubemap;
         config1.mode = environment::MappingMode::REFLECTION;
-        config1.reflection_coefficient = 0.9f;
+        config1.reflection_coefficient = 0.6f;
         config1.base_color = glm::vec3(0.8f, 0.2f, 0.2f);
         env_mapping1 = std::make_shared<environment::EnvironmentMapping>(config1);
         
@@ -107,10 +108,17 @@ int main() {
         environment::EnvironmentMappingConfig config3;
         config3.cubemap = cubemap;
         config3.mode = environment::MappingMode::FRESNEL;
-        config3.fresnel_power = 30.0f;
+        config3.fresnel_power = 2.0f;
         config3.index_of_refraction = 1.33f;
         config3.base_color = glm::vec3(0.2f, 0.2f, 0.8f);
         env_mapping3 = std::make_shared<environment::EnvironmentMapping>(config3);
+        
+        environment::EnvironmentMappingConfig config4;
+        config4.cubemap = cubemap;
+        config4.mode = environment::MappingMode::CHROMATIC_DISPERSION;
+        config4.ior_rgb = glm::vec3(1.20f, 1.52f, 1.74f);
+        config4.base_color = glm::vec3(0.8f, 0.8f, 0.2f);
+        env_mapping4 = std::make_shared<environment::EnvironmentMapping>(config4);
         
         std::cout << "✓ Environment mapping systems created" << std::endl;
         std::cout << "[INIT] Setting up scene..." << std::endl;
@@ -122,31 +130,40 @@ int main() {
         // Create sphere geometry
         auto sphere_geom = Sphere::Make(1.0f, 16, 32);  // radius, stacks, slices
         
-        // Create three spheres with different materials
+        // Create four spheres with different materials
         auto& node1 = scene::graph()->addNode("sphere1")
             .with<component::TransformComponent>(
-                transform::Transform::Make()->setTranslate(-2.5f, 0.0f, 0.0f))
+                transform::Transform::Make()->setTranslate(-3.5f, 0.0f, 0.0f))
             .with<component::CubemapComponent>(cubemap, "environmentMap", 0)
             .with<component::ShaderComponent>(env_mapping1->getShader())
             .with<component::GeometryComponent>(sphere_geom);
         
         auto& node2 = scene::graph()->addNode("sphere2")
             .with<component::TransformComponent>(
-                transform::Transform::Make()->setTranslate(0.0f, 0.0f, 0.0f))
+                transform::Transform::Make()->setTranslate(-1.2f, 0.0f, 0.0f))
             .with<component::CubemapComponent>(cubemap, "environmentMap", 0)
             .with<component::ShaderComponent>(env_mapping2->getShader())
             .with<component::GeometryComponent>(sphere_geom);
         
         auto& node3 = scene::graph()->addNode("sphere3")
             .with<component::TransformComponent>(
-                transform::Transform::Make()->setTranslate(2.5f, 0.0f, 0.0f))
+                transform::Transform::Make()->setTranslate(1.2f, 0.0f, 0.0f))
             .with<component::CubemapComponent>(cubemap, "environmentMap", 0)
             .with<component::ShaderComponent>(env_mapping3->getShader())
             .with<component::GeometryComponent>(sphere_geom);
-        std::cout << "✓ Three spheres added to scene" << std::endl;
-        std::cout << "  - Sphere 1 (left): Reflection" << std::endl;
-        std::cout << "  - Sphere 2 (center): Refraction" << std::endl;
+        
+        auto& node4 = scene::graph()->addNode("sphere4")
+            .with<component::TransformComponent>(
+                transform::Transform::Make()->setTranslate(3.5f, 0.0f, 0.0f))
+            .with<component::CubemapComponent>(cubemap, "environmentMap", 0)
+            .with<component::ShaderComponent>(env_mapping4->getShader())
+            .with<component::GeometryComponent>(sphere_geom);
+        
+        std::cout << "✓ Four spheres added to scene" << std::endl;
+        std::cout << "  - Sphere 1 (far left): Reflection" << std::endl;
+        std::cout << "  - Sphere 2 (left): Refraction" << std::endl;
         std::cout << "  - Sphere 3 (right): Fresnel" << std::endl;
+        std::cout << "  - Sphere 4 (far right): Chromatic Dispersion" << std::endl;
         
         // Create camera
         auto camera = component::PerspectiveCamera::Make(60.0f, 0.1f, 100.0f);
@@ -186,7 +203,7 @@ int main() {
     try {
         engene::EnGene app(on_init, on_update, on_render, config, handler);
         std::cout << "\n[RUNNING] Comprehensive integration test" << std::endl;
-        std::cout << "Expected: Three spheres with different materials in skybox environment" << std::endl;
+        std::cout << "Expected: Four spheres with different materials in skybox environment" << std::endl;
         std::cout << "  - All effects should work simultaneously" << std::endl;
         std::cout << "  - Arcball controls should allow interactive camera navigation" << std::endl;
         std::cout << "  - Scene graph and stack systems should integrate correctly" << std::endl;

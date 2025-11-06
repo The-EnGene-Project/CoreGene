@@ -103,6 +103,9 @@ void main() {
     
     // Calculate reflection vector
     vec3 R = reflect(-V, N);
+
+    // Reverses orientation back to right handed
+    R.z = -R.z;
     
     // Sample environment map
     vec3 reflectedColor = texture(u_environmentMap, R).rgb;
@@ -147,6 +150,9 @@ void main() {
     if (length(R) < 0.001) {
         R = reflect(-V, N);
     }
+
+    // Reverses orientation back to right handed
+    R.z = -R.z;
     
     // Sample environment map
     vec3 refractedColor = texture(u_environmentMap, R).rgb;
@@ -196,6 +202,10 @@ void main() {
     if (length(R_refract) < 0.001) {
         R_refract = R_reflect;
     }
+
+    // Reverses orientation back to right handed
+    R_reflect.z = -R_reflect.z;
+    R_refract.z = -R_refract.z;
     
     // Sample environment map
     vec3 reflectedColor = texture(u_environmentMap, R_reflect).rgb;
@@ -250,6 +260,11 @@ void main() {
     if (length(R_red) < 0.001) R_red = reflect(-V, N);
     if (length(R_green) < 0.001) R_green = reflect(-V, N);
     if (length(R_blue) < 0.001) R_blue = reflect(-V, N);
+
+    // Reverses orientation back to right handed
+    R_red.z = -R_red.z;
+    R_green.z = -R_green.z;
+    R_blue.z = -R_blue.z;
     
     // Sample environment map three times
     float red = texture(u_environmentMap, R_red).r;

@@ -6,14 +6,14 @@ layout(location = 2) in vec2 aTexCoord;
 layout(location = 3) in vec3 aTangent;
 
 out vec3 v_fragPos;
-out vec3 v_N;
-out vec3 v_T;
+out vec3 v_normal;
+out vec3 v_tangent;
 out vec2 v_texCoord;
 
 // === Matrizes padrão ===
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
+uniform mat4 u_model;
+uniform mat4 u_view;
+uniform mat4 u_projection;
 
 // === Multi Clip Planes ===
 #define MAX_CLIP_PLANES 6
@@ -22,12 +22,13 @@ uniform int num_clip_planes;
 
 void main()
 {
-    vec4 worldPos = model * vec4(aPos, 1.0);
+    vec4 worldPos = u_model * vec4(aPos, 1.0);
     v_fragPos = worldPos.xyz;
 
-    mat3 normalMatrix = mat3(transpose(inverse(model)));
-    v_N = normalize(normalMatrix * aNormal);
-    v_T = normalize(normalMatrix * aTangent);
+    mat3 normalMatrix = transpose(inverse(mat3(u_model)));
+    v_normal = normalize(normalMatrix * aNormal);
+    v_tangent = normalize(normalMatrix * aTangent);
+
 
     v_texCoord = aTexCoord;
 
@@ -36,5 +37,5 @@ void main()
         gl_ClipDistance[i] = dot(worldPos, clip_planes[i]);
     }
 
-    gl_Position = projection * view * worldPos;
+    gl_Position = u_projection * u_view * worldPos;
 }

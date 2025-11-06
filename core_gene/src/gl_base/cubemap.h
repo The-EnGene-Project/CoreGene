@@ -87,10 +87,11 @@ private:
      * @param path Path to the cross-layout image
      * @param face_width Output parameter for face width
      * @param face_height Output parameter for face height
+     * @param channels Output parameter for number of color channels
      * @return Array of 6 pointers to extracted face data (caller must free)
      */
     static std::array<unsigned char*, 6> ExtractCrossLayout(
-        const std::string& path, int& face_width, int& face_height);
+        const std::string& path, int& face_width, int& face_height, int& channels);
     
     /**
      * @brief Generates a cache key from face paths.
@@ -253,17 +254,32 @@ inline void Cubemap::LoadCubemapFace(GLenum target, const std::string& path,
     }
     
     // Determine format based on number of channels
-    GLenum format = GL_RGB;
+    GLenum internalFormat = GL_RGB8;
+    GLenum dataFormat = GL_RGB;
+
     if (channels == 4) {
-        format = GL_RGBA;
+        internalFormat = GL_RGBA8;
+        dataFormat = GL_RGBA;
     } else if (channels == 3) {
-        format = GL_RGB;
+        internalFormat = GL_RGB8;
+        dataFormat = GL_RGB;
     } else if (channels == 1) {
-        format = GL_RED;
+        internalFormat = GL_R8;  // Use GL_R8 for modern GL
+        dataFormat = GL_RED;
     }
-    
+
+    // --- THE FIX ---
+    // Tell OpenGL our data is tightly packed (no 4-byte row alignment)
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
     // Upload texture data to GPU
-    glTexImage2D(target, 0, format, out_width, out_height, 0, format, GL_UNSIGNED_BYTE, data);
+    // Note: I've separated internalFormat and dataFormat for best practice
+    // (This also fixes the potential "all red" issue from my last post)
+    glTexImage2D(target, 0, internalFormat, out_width, out_height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
+    GL_CHECK("upload cubemap face data");
+
+    // Restore the default alignment for other texture operations in your engine
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     GL_CHECK("upload cubemap face data");
     
     // Free the image data from CPU memory
@@ -337,9 +353,9 @@ inline CubemapPtr Cubemap::Make(const std::array<std::string, 6>& face_paths) {
 
 // Extract 6 faces from cross-layout image
 inline std::array<unsigned char*, 6> Cubemap::ExtractCrossLayout(
-    const std::string& path, int& face_width, int& face_height) {
+    const std::string& path, int& face_width, int& face_height, int& channels) {
     
-    int width, height, channels;
+    int width, height;
     stbi_set_flip_vertically_on_load(false);
     unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, 0);
     
@@ -424,8 +440,8 @@ inline Cubemap::Cubemap(const std::string& cross_layout_path)
     : m_tid(0), m_face_width(0), m_face_height(0) {
     
     // Extract faces from cross layout
-    int face_w, face_h;
-    auto face_data = ExtractCrossLayout(cross_layout_path, face_w, face_h);
+    int face_w, face_h, channels;
+    auto face_data = ExtractCrossLayout(cross_layout_path, face_w, face_h, channels);
     
     m_face_width = face_w;
     m_face_height = face_h;
@@ -446,14 +462,33 @@ inline Cubemap::Cubemap(const std::string& cross_layout_path)
     glBindTexture(GL_TEXTURE_CUBE_MAP, m_tid);
     GL_CHECK("bind cubemap for configuration");
     
+    // Determine format based on number of channels
+    GLenum internalFormat = GL_RGB8;
+    GLenum dataFormat = GL_RGB;
+
+    if (channels == 4) {
+        internalFormat = GL_RGBA8;
+        dataFormat = GL_RGBA;
+    } else if (channels == 3) {
+        internalFormat = GL_RGB8;
+        dataFormat = GL_RGB;
+    } else if (channels == 1) {
+        internalFormat = GL_R8;
+        dataFormat = GL_RED;
+    }
+    
+    // Set pixel alignment for proper texture upload
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    
     // Upload all 6 faces
-    // Assume RGB format (stb_image default)
-    GLenum format = GL_RGB;
     for (int i = 0; i < 6; i++) {
         GLenum target = GL_TEXTURE_CUBE_MAP_POSITIVE_X + i;
-        glTexImage2D(target, 0, format, face_w, face_h, 0, format, GL_UNSIGNED_BYTE, face_data[i]);
+        glTexImage2D(target, 0, internalFormat, face_w, face_h, 0, dataFormat, GL_UNSIGNED_BYTE, face_data[i]);
         GL_CHECK("upload cubemap face from cross-layout");
     }
+    
+    // Restore default alignment
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     
     // Set texture parameters
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

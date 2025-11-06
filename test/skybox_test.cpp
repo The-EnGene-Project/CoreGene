@@ -107,7 +107,7 @@ int main() {
         environment::EnvironmentMappingConfig config3;
         config3.cubemap = cubemap;
         config3.mode = environment::MappingMode::FRESNEL;
-        config3.fresnel_power = 3.0f;
+        config3.fresnel_power = 30.0f;
         config3.index_of_refraction = 1.33f;
         config3.base_color = glm::vec3(0.2f, 0.2f, 0.8f);
         env_mapping3 = std::make_shared<environment::EnvironmentMapping>(config3);

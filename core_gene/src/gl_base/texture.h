@@ -66,19 +66,39 @@ static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int
         return;
     }
 
-    // Determine format based on number of channels
-    GLenum format = GL_RGB;
+    GLenum internalFormat = GL_RGB8; // How the GPU stores it
+    GLenum dataFormat = GL_RGB;      // The format of the source 'data'
+
+    std::cout << "Loaded texture file: " << filename << std::endl;
+    std::cout << "  - Width: " << width << ", Channels: " << channels << std::endl;
+    std::cout << "  - Bytes per row: " << (width * channels) << std::endl;
+
     if (channels == 4) {
-        format = GL_RGBA;
+        internalFormat = GL_RGBA8;
+        dataFormat = GL_RGBA;
     } else if (channels == 3) {
-        format = GL_RGB;
+        internalFormat = GL_RGB8;
+        dataFormat = GL_RGB;
     } else if (channels == 1) {
-        format = GL_RED;
+        // Store as 3-channel RGB, but the source is 1-channel
+        // This makes OpenGL convert (R) -> (R, R, R) for a grayscale image
+        internalFormat = GL_RGB8;
+        dataFormat = GL_RED;
     }
 
+    // Tell OpenGL data is tightly packed
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    GL_CHECK("set 1-byte pixel alignment");
+
     // Upload texture data to the GPU
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
     GL_CHECK("upload texture data");
+    
+    // Restore default alignment
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    GL_CHECK("restore 4-byte pixel alignment");
+
+    // Generate mipmaps AFTER uploading data
     glGenerateMipmap(GL_TEXTURE_2D);
     GL_CHECK("generate mipmaps");
 

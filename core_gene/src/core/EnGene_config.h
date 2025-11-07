@@ -1,3 +1,5 @@
+#ifndef ENGENE_CONFIG_H
+#define ENGENE_CONFIG_H
 #pragma once
 
 #include <string>
@@ -30,19 +32,25 @@ struct EnGeneConfig {
     // --- Default Shaders ---
     // Using C++ raw string literals R"(...)" for multi-line strings.
     inline static const char* DEFAULT_VERTEX_SHADER = R"(
-        #version 410
-
-        layout (location=0) in vec4 vertex;
-        layout (location=1) in vec4 icolor;
+        #version 410 core
+        layout (location = 0) in vec4 vertex;
+        layout (location = 1) in vec4 icolor;
 
         out vec4 vertexColor;
 
-        uniform mat4 M;
+        // Tier 1: Global Camera UBO
+        layout (std140) uniform CameraMatrices {
+            mat4 view;
+            mat4 projection;
+        };
 
-        void main (void)
-        {
-        vertexColor = icolor;
-        gl_Position = M * vertex;
+        // Tier 3: Dynamic Model Matrix
+        uniform mat4 u_model;
+
+        void main() {
+            vertexColor = icolor;
+            // Note the new multiplication order for matrices
+            gl_Position = projection * view * u_model * vertex;
         }
     )";
 
@@ -62,3 +70,5 @@ struct EnGeneConfig {
 };
 
 } // namespace engene
+
+#endif // ENGENE_CONFIG_H

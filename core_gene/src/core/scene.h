@@ -10,10 +10,12 @@
 
 // Core engine headers
 #include "node.h"
-// #include "scene_node_builder.h"
 #include "../components/component_collection.h"
+#include "../3d/camera/camera.h"
+#include "../3d/camera/orthographic_camera.h"
 #include "../gl_base/transform.h"
 #include "../exceptions/node_not_found_exception.h"
+
 
 namespace scene {
 
@@ -32,7 +34,7 @@ private:
     SceneNodePtr root;
     std::unordered_map<std::string, SceneNodePtr> name_map;
     std::unordered_map<int, SceneNodePtr> node_map;
-    transform::TransformPtr view_transform;
+    component::CameraPtr m_active_camera;
 
     SceneGraph() {
         root = SceneNode::Make("root");
@@ -42,9 +44,32 @@ private:
         name_map["root"] = root;
         node_map[root->getId()] = root;
 
-        // BACALHAU change to a Camera eventually
-        view_transform = transform::Transform::Make();
-        view_transform->orthographic(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f);
+        // --- Create and set a default Orthographic Camera ---
+        // 1. Create the node and add it to the graph using the internal method.
+        //    (This is what the builder's 'addNode' would have done).
+        SceneNodePtr default_cam_node = this->addNode("_default_camera", root);
+
+        // 2. Check for successful creation and add the component.
+        if (default_cam_node) {
+            // 3. Add the component directly.
+            //    (This is what the builder's '.with<>()' would have done).
+            default_cam_node->payload().addComponent(component::OrthographicCamera::Make(), default_cam_node);
+
+            // 4. Set the active camera from the new component.
+            m_active_camera = default_cam_node->payload().get<component::Camera>();
+        } else {
+            // This else block handles the case where addNode returns nullptr
+            std::cerr << "CRITICAL ERROR: Failed to create default camera node in SceneGraph constructor." << std::endl;
+            m_active_camera = nullptr; // Explicitly set to null
+        }
+
+        // The active camera is the component we just added to the new node.
+        m_active_camera = default_cam_node->payload().get<component::Camera>();
+
+        if (!m_active_camera) {
+            // This else block handles the case where ComponentCollection::get returns nullptr
+            std::cerr << "CRITICAL ERROR: Failed to find default camera component." << std::endl;
+        }
     }
 
     // The builder class for SceneNodes is a friend.
@@ -176,34 +201,76 @@ public:
             return nullptr;
         }
     }
+    // --- NEW --- Camera Management ---
+    /**
+     * @brief Sets the active camera by finding a node by name.
+     * If the node is not found or has no camera, the active camera is not changed.
+     */
+    void setActiveCamera(const std::string& node_name) {
+        SceneNodePtr node = getNodeByName(node_name);
+        if (!node) {
+            std::cerr << "Warning: Cannot set active camera. Node '" << node_name << "' not found." << std::endl;
+            return;
+        }
+        setActiveCamera(node); // Delegate to the node-based version
+    }
+
+    /**
+     * @brief Sets the active camera from a node that contains an Camera component.
+     * If the node is null or has no camera, the active camera is not changed.
+     */
+    void setActiveCamera(SceneNodePtr camera_node) {
+        if (!camera_node) {
+            std::cerr << "Warning: Cannot set active camera from a null node." << std::endl;
+            return;
+        }
+        auto camera = camera_node->payload().get<component::Camera>();
+        if (!camera) {
+            std::cerr << "Warning: Node '" << camera_node->getName() << "' has no Camera component. Active camera unchanged." << std::endl;
+            return;
+        }
+        setActiveCamera(camera); // Delegate to the component-based version
+    }
+
+    /**
+     * @brief Sets the active camera directly from a camera component pointer.
+     * This is the primary setter. If the camera is null, the active camera is not changed.
+     */
+    void setActiveCamera(component::CameraPtr camera) {
+        if (!camera) {
+            std::cerr << "Warning: Attempted to set a null camera pointer as active. Active camera unchanged." << std::endl;
+            return;
+        }
+        m_active_camera = camera;
+    }
+
+    component::CameraPtr getActiveCamera() const {
+        return m_active_camera;
+    }
 
     /**
      * @brief Draws the entire scene by initiating a visit from the root.
-     * Each node will execute its own attached drawing actions.
+     * It uses the active camera to set up the view and projection matrices.
      */
-    void draw() {
-        transform::stack()->push(view_transform->getMatrix());
+    void draw(float aspect_ratio = 1.0f) {
         if (root) {
             root->visit();
         }
-        transform::stack()->pop();
     }
 
     /**
      * @brief Draws a specific subtree by initiating a visit from the given node.
      */
-    void drawSubtree(SceneNodePtr node) {
-        transform::stack()->push(view_transform->getMatrix());
+    void drawSubtree(SceneNodePtr node, float aspect_ratio = 1.0f) {
         if (node) {
             node->visit();
         }
-        transform::stack()->pop();
     }
 
-    void drawSubtree(const std::string& node_name) {
+    void drawSubtree(const std::string& node_name, float aspect_ratio = 1.0f) { // --- MODIFIED ---
         SceneNodePtr node = getNodeByName(node_name);
         if (node) {
-            drawSubtree(node);
+            drawSubtree(node, aspect_ratio);
         } else {
             std::cerr << "Node with name " << node_name << " not found!" << std::endl;
         }
@@ -216,10 +283,6 @@ public:
         node_map.clear();
         name_map["root"] = root;
         node_map[root->getId()] = root;
-    }
-
-    void setView(float left, float right, float bottom, float top, float near, float far) {
-        view_transform->orthographic(left, right, bottom, top, near, far);
     }
 };
 

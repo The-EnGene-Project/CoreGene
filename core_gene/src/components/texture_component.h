@@ -56,6 +56,12 @@ public:
         return TextureComponentPtr(new TextureComponent(texture, std::move(samplerName), unit));
     }
 
+    static TextureComponentPtr Make(texture::TexturePtr texture, std::string samplerName, GLuint unit, const std::string& name) {
+        auto comp = TextureComponentPtr(new TextureComponent(texture, std::move(samplerName), unit));
+        comp->setName(name);
+        return comp;
+    }
+
     /**
      * @brief Pushes the component's texture onto the texture stack, making it active.
      * This method is intended to be called during a "pre-order" scene graph traversal.

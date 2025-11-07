@@ -12,29 +12,36 @@ namespace component {
 class TransformComponent;
 using TransformComponentPtr = std::shared_ptr<TransformComponent>;
 
-class TransformComponent : virtual public Component {
+class TransformComponent : public Component {
 private:
     transform::TransformPtr m_transform;
-
-    unsigned int validatePriority(unsigned int p) {
-        const unsigned int max_priority = static_cast<int>(ComponentPriority::CAMERA); 
-        if (p > max_priority || p < 0) throw std::invalid_argument(
-            "Invalid priority for TransformComponent: " + std::to_string(p) +
-            ". Priority must be between " + std::to_string(0) +
-            " and " + std::to_string(max_priority) + "."
-        );
+    
+protected:
+    // The validation function now takes the bounds as arguments
+    unsigned int validatePriority(unsigned int p, unsigned int min_bound, unsigned int max_bound) const {
+        if (p < min_bound || p > max_bound) {
+            throw std::invalid_argument(
+                "Priority " + std::to_string(p) + " is outside the valid bounds [" +
+                std::to_string(min_bound) + ", " + std::to_string(max_bound) + "]."
+            );
+        }
         return p;
     }
-protected:
 
-    TransformComponent(transform::TransformPtr t) :
-    Component(ComponentPriority::TRANSFORM),
-    m_transform(t)
+    // The constructor now accepts the validation bounds
+    TransformComponent(transform::TransformPtr t, unsigned int priority, unsigned int min_bound, unsigned int max_bound) :
+        Component(validatePriority(priority, min_bound, max_bound)), // Use the new validation
+        m_transform(t)
     {}
 
-    TransformComponent(transform::TransformPtr t, unsigned int priority) :
-    Component(validatePriority(priority)),
-    m_transform(t)
+    // A default constructor for standard transforms
+    TransformComponent(transform::TransformPtr t) :
+        TransformComponent(
+            t,
+            static_cast<unsigned int>(ComponentPriority::TRANSFORM), // Default priority
+            0,                                                      // Default min bound
+            static_cast<unsigned int>(ComponentPriority::CAMERA)    // Default max bound
+        )
     {}
 
 public:
@@ -44,7 +51,19 @@ public:
     }
 
     static TransformComponentPtr Make(transform::TransformPtr t, unsigned int priority) {
-        return TransformComponentPtr(new TransformComponent(t, priority));
+        return TransformComponentPtr(new TransformComponent(t, priority, 0, static_cast<unsigned int>(ComponentPriority::CAMERA)));
+    }
+
+    static TransformComponentPtr Make(transform::TransformPtr t, const std::string& name) {
+        auto comp = TransformComponentPtr(new TransformComponent(t));
+        comp->setName(name);
+        return comp;
+    }
+
+    static TransformComponentPtr Make(transform::TransformPtr t, unsigned int priority, const std::string& name) {
+        auto comp = TransformComponentPtr(new TransformComponent(t, priority, 0, static_cast<unsigned int>(ComponentPriority::CAMERA)));
+        comp->setName(name);
+        return comp;
     }
     
     virtual void apply() override {

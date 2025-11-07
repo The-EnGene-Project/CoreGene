@@ -34,14 +34,14 @@ using TextureStackPtr = std::shared_ptr<TextureStack>;
 // This parallels the MakeShader function in shader.h.
 static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int& width, int& height) {
     glBindTexture(GL_TEXTURE_2D, tid);
-    Error::Check("bind texture for configuration");
+    GL_CHECK("bind texture for configuration");
 
     // Set texture wrapping and filtering options
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    Error::Check("set texture parameters");
+    GL_CHECK("set texture parameters");
 
     // Load image data using stb_image
     int channels;
@@ -66,9 +66,9 @@ static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int
 
     // Upload texture data to the GPU
     glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-    Error::Check("upload texture data");
+    GL_CHECK("upload texture data");
     glGenerateMipmap(GL_TEXTURE_2D);
-    Error::Check("generate mipmaps");
+    GL_CHECK("generate mipmaps");
 
     // Free the image data from CPU memory
     stbi_image_free(data);
@@ -87,7 +87,7 @@ protected:
     // Constructor acquires the OpenGL resource.
     Texture(const std::string& filename) : m_width(0), m_height(0) {
         glGenTextures(1, &m_tid);
-        Error::Check("generate texture");
+        GL_CHECK("generate texture");
 
         if (m_tid == 0) {
             std::cerr << "Could not create texture object" << std::endl;
@@ -96,6 +96,27 @@ protected:
 
         // Use helper to load and configure the texture
         LoadAndConfigureTexture(m_tid, filename, m_width, m_height);
+    }
+
+    Texture(int width, int height, unsigned char* data) : m_width(width), m_height(height) {
+        glGenTextures(1, &m_tid);
+        GL_CHECK("generate texture");
+
+        if (m_tid == 0) {
+            std::cerr << "Could not create texture object" << std::endl;
+            return;
+        }
+
+        glBindTexture(GL_TEXTURE_2D, m_tid);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 public:
     static TexturePtr Make(const std::string& filename) {
@@ -115,6 +136,10 @@ public:
 
         // 4. Return the new texture.
         return new_texture;
+    }
+
+    static TexturePtr Make(int width, int height, unsigned char* data) {
+        return TexturePtr(new Texture(width, height, data));
     }
     ~Texture() {
         glDeleteTextures(1, &m_tid);
@@ -261,6 +286,31 @@ inline std::function<int()> getUnitProvider(const std::string& samplerName) {
     return [samplerName]() -> int {
         // It pulls the up-to-date texture unit from the global stack.
         return static_cast<int>(texture::stack()->getUnitForSampler(samplerName));
+    };
+}
+
+} // namespace texture
+
+// Forward declare Sampler2D for the overload
+namespace uniform { namespace detail { struct Sampler2D; } }
+
+namespace texture {
+
+/**
+ * @brief Returns a provider function for sampler2D uniforms.
+ * 
+ * This is the type-safe version that returns uniform::detail::Sampler2D
+ * instead of int. Use this when configuring sampler2D uniforms.
+ * 
+ * Example:
+ * @code
+ * shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture", 
+ *     texture::getSamplerProvider("u_texture"));
+ * @endcode
+ */
+inline std::function<uniform::detail::Sampler2D()> getSamplerProvider(const std::string& samplerName) {
+    return [samplerName]() -> uniform::detail::Sampler2D {
+        return uniform::detail::Sampler2D{static_cast<int>(texture::stack()->getUnitForSampler(samplerName))};
     };
 }
 

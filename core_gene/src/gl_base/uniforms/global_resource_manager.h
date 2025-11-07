@@ -1,0 +1,218 @@
+#ifndef GLOBAL_RESOURCE_MANAGER_H
+#define GLOBAL_RESOURCE_MANAGER_H
+#pragma once
+
+#include "../gl_includes.h"
+#include "../i_shader.h"
+#include "../error.h"
+#include "shader_resource.h"
+#include <vector>
+#include <unordered_map>
+#include <string>
+#include <memory>
+#include <iostream> // For error/warning logging
+#include <algorithm> // For std::remove_if
+
+namespace uniform {
+
+/**
+ * @class GlobalResourceManager
+ * @brief A singleton to orchestrate all global ShaderResource objects.
+ *
+ * This manager handles the registration, unregistration, per-frame updates, and
+ * shader binding for all registered UBOs, SSBOs, etc. It is the
+ * central component that automates resource management.
+ */
+class GlobalResourceManager {
+private:
+    std::unordered_map<std::string, ShaderResourcePtr> m_known_resources;
+    std::vector<ShaderResourcePtr> m_per_frame_resources;
+
+    /**
+     * @brief Private constructor to enforce the singleton pattern.
+     */
+    GlobalResourceManager() = default;
+    friend GlobalResourceManager& manager();
+
+public:
+    // This is a singleton, so it should not be copyable or movable.
+    GlobalResourceManager(const GlobalResourceManager&) = delete;
+    GlobalResourceManager& operator=(const GlobalResourceManager&) = delete;
+    GlobalResourceManager(GlobalResourceManager&&) = delete;
+    GlobalResourceManager& operator=(GlobalResourceManager&&) = delete;
+
+    /**
+     * @brief Registers a new shader resource, handling name collisions.
+     * @param resource The resource to register.
+     */
+    void registerResource(ShaderResourcePtr resource) {
+        if (!resource) return;
+
+        const std::string& name = resource->getName();
+        GLuint binding_point = resource->getBindingPoint();
+        
+        // Check if the binding point is already in use by a different resource
+        for (const auto& [existing_name, existing_resource] : m_known_resources) {
+            if (existing_resource->getBindingPoint() == binding_point && existing_name != name) {
+                std::cerr << "Warning: Binding point " << binding_point 
+                          << " is already in use by resource '" << existing_name 
+                          << "'. Registering new resource '" << name 
+                          << "' with the same binding point will cause conflicts." << std::endl;
+                break;
+            }
+        }
+        
+        auto it = m_known_resources.find(name);
+
+        if (it != m_known_resources.end()) {
+            // A resource with this name already exists. Clean it up before overwriting.
+            ShaderResourcePtr oldResource = it->second;
+            if (oldResource->getUpdateMode() == UpdateMode::PER_FRAME) {
+                // Remove the old resource from the per-frame update list.
+                m_per_frame_resources.erase(
+                    std::remove(m_per_frame_resources.begin(), m_per_frame_resources.end(), oldResource),
+                    m_per_frame_resources.end()
+                );
+            }
+        }
+
+        m_known_resources[name] = resource;
+
+        if (resource->getUpdateMode() == UpdateMode::PER_FRAME) {
+            m_per_frame_resources.push_back(resource);
+        }
+    }
+
+    /**
+     * @brief Unregisters a shader resource by its name.
+     * @param resourceName The name of the resource to remove.
+     */
+    void unregisterResource(const std::string& resourceName) {
+        auto it = m_known_resources.find(resourceName);
+        if (it == m_known_resources.end()) {
+            std::cerr << "Warning: Attempted to unregister non-existent resource '" << resourceName << "'." << std::endl;
+            return;
+        }
+
+        ShaderResourcePtr resource = it->second;
+        if (resource->getUpdateMode() == UpdateMode::PER_FRAME) {
+            // Remove from the efficient update list first.
+            m_per_frame_resources.erase(
+                std::remove(m_per_frame_resources.begin(), m_per_frame_resources.end(), resource),
+                m_per_frame_resources.end()
+            );
+        }
+
+        m_known_resources.erase(it);
+    }
+    
+    /**
+     * @brief Unregisters all currently managed resources.
+     */
+    void unregisterAllResources() {
+        m_known_resources.clear();
+        m_per_frame_resources.clear();
+    }
+
+    /**
+     * @brief Applies all registered PER_FRAME resources. Called once per frame.
+     */
+    void applyPerFrame() {
+        GL_CHECK("apply shader resource per frame");
+        for (const auto& resource : m_per_frame_resources) {
+            resource->apply();
+        }
+        GL_CHECK("apply shader resource after per frame");
+    }
+
+    /**
+     * @brief Manually triggers the apply method for a specific ON_DEMAND resource.
+     * @param resourceName The name of the resource to apply.
+     */
+    void applyShaderResource(const std::string& resourceName) {
+        GL_CHECK("apply shader resource");
+        auto it = m_known_resources.find(resourceName);
+        if (it != m_known_resources.end()) {
+            it->second->apply();
+        } else {
+            std::cerr << "Warning: Attempted to apply non-existent resource '" << resourceName << "'." << std::endl;
+        }
+        GL_CHECK("after applying shader resources");
+    }
+
+    /**
+     * @brief Binds a resource's uniform block to a shader program.
+     * @param shader_pid The OpenGL program ID of the shader.
+     * @param resourceName The name of the registered resource to bind.
+     */
+    void bindResourceToShader(GLuint shader_pid, const std::string& resourceName) {
+        auto it = m_known_resources.find(resourceName);
+        if (it == m_known_resources.end()) {
+            std::cerr << "Error: Cannot bind resource. Resource '" << resourceName << "' not registered." << std::endl;
+            return;
+        }
+
+        GLuint block_index = glGetUniformBlockIndex(shader_pid, resourceName.c_str());
+
+        if (block_index == GL_INVALID_INDEX) {
+            // This is a valid scenario if a shader doesn't use a global uniform.
+            return;
+        }
+
+        GLuint binding_point = it->second->getBindingPoint();
+        glUniformBlockBinding(shader_pid, block_index, binding_point);
+    }
+
+    /**
+     * @brief Binds a resource's uniform block to a shader (overload).
+     * @param shader A shared pointer to the shader object.
+     * @param resourceName The name of the registered resource to bind.
+     */
+    void bindResourceToShader(shader::IShaderPtr shader_obj, const std::string& resourceName) {
+        if (shader_obj) {
+            bindResourceToShader(shader_obj->GetShaderID(), resourceName);
+        }
+    }
+
+
+    /**
+     * @brief Binds all registered resources to a given shader.
+     * @param shader A shared pointer to the shader object.
+     */
+    void bindAllResourcesToShader(shader::IShaderPtr shader_obj) {
+
+        if (!shader_obj) return;
+
+        GLuint shader_pid = shader_obj->GetShaderID();
+
+        for (const auto& pair : m_known_resources) {
+
+            bindResourceToShader(shader_pid, pair.first);
+
+        }
+    }
+
+    /**
+     * @brief Checks if a resource with the given name is registered.
+     * @param resourceName The name of the resource to check.
+     * @return True if the resource is registered, false otherwise.
+     */
+    bool isResourceRegistered(const std::string& resourceName) const {
+        return m_known_resources.find(resourceName) != m_known_resources.end();
+    }
+
+};
+
+/**
+ * @brief Provides access to the singleton instance of the GlobalResourceManager.
+ * @return A reference to the singleton manager.
+ */
+inline GlobalResourceManager& manager() {
+    static GlobalResourceManager instance;
+    return instance;
+}
+
+} // namespace uniform
+
+#endif // GLOBAL_RESOURCE_MANAGER_H
+

@@ -3,15 +3,24 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include "../core/node.h"
+
+class ComponentCollection;
+// Forward-declare SceneNode to avoid circular header includes.
+namespace scene { 
+using SceneNode = node::Node<ComponentCollection>;
+using SceneNodePtr = std::shared_ptr<SceneNode>;
+}
 
 namespace component {
 
-enum class ComponentPriority {
+enum class ComponentPriority : unsigned int {
     TRANSFORM = 100,
-    CAMERA = 200,      // Example for later
-    SHADER = 300,
-    APPEARANCE = 400,
-    GEOMETRY = 500,       // Drawing should happen last
+    SHADER = 200,
+    APPEARANCE = 300,
+    CAMERA = 400,
+    GEOMETRY = 500,    // Drawing should happen last
     CUSTOM_SCRIPT = 600
 };
 
@@ -20,41 +29,46 @@ using ComponentPtr = std::shared_ptr<Component>;
 
 class Component {
 private:
-    inline static int next_id = 0;
     int id;
     unsigned int priority;
+    std::string m_name; // The optional unique name for this component instance
+    inline static int next_id = 0;
 
 protected:
+    scene::SceneNodePtr m_owner;
 
-    explicit Component(unsigned int p) :
-    priority(p)
-    {
+    explicit Component(unsigned int p, const std::string& name = "") 
+        : priority(p), m_name(name), m_owner(nullptr) {
         id = next_id++;
     }
 
-    explicit Component(ComponentPriority p) :
-    priority(static_cast<int>(p))
-    {
+    explicit Component(ComponentPriority p, const std::string& name = "") 
+        : priority(static_cast< unsigned int>(p)), m_name(name), m_owner(nullptr) {
         id = next_id++;
     }
+
+    void setName(const std::string& new_name) { m_name = new_name; }
 
 public:
+    virtual ~Component() = default;
+
+    void setOwner(scene::SceneNodePtr owner) {
+        m_owner = owner;
+    }
+    
+    // Static version for ComponentCollection messages
+    static const char* getTypeNameStatic() { return "Component"; }
+    
     virtual void apply() {}
     virtual void unapply() {}
-
-    virtual unsigned int getPriority() {
-        return priority;
-    }
-
-    int getId() {
-        return id;
-    }
-
+    virtual unsigned int getPriority() { return priority; }
+    int getId() { return id; }
+    const std::string& getName() const { return m_name; }
     virtual const char* getTypeName() const = 0;
 };
 
-
 }
 
+#include "component_collection.h"
 
 #endif

@@ -51,7 +51,7 @@ protected:
 
         // 3. Configuração dos atributos dos vértices
         // Diz ao OpenGL como interpretar os dados de posição do VBO
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, vertex_stride_in_bytes, (void*)0);
+        glVertexAttribPointer(0, pos_size, GL_FLOAT, GL_FALSE, vertex_stride_in_bytes, (void*)0);
         glEnableVertexAttribArray(0);
 
         // Configura atributos extras

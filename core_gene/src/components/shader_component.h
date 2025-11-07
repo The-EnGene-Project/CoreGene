@@ -26,6 +26,12 @@ public:
     static ShaderComponentPtr Make(shader::ShaderPtr s) {
         return ShaderComponentPtr(new ShaderComponent(s));
     }
+
+    static ShaderComponentPtr Make(shader::ShaderPtr s, const std::string& name) {
+        auto comp = ShaderComponentPtr(new ShaderComponent(s));
+        comp->setName(name);
+        return comp;
+    }
     
     virtual void apply() override {
         shader::stack()->push(m_shader);

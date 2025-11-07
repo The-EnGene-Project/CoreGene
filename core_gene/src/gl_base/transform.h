@@ -8,10 +8,9 @@
 #include <iostream>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
+#include "../utils/observer_interface.h"
 
 namespace transform {
-    
     
 class Transform;
 using TransformPtr = std::shared_ptr<Transform>;
@@ -19,10 +18,10 @@ using TransformPtr = std::shared_ptr<Transform>;
 class TransformStack;
 using TransformStackPtr = std::shared_ptr<TransformStack>;
 
-class Transform : public std::enable_shared_from_this<Transform> {
-    glm::mat4 matrix; // Matriz de transformação 4x4
+// Inherit from ISubject to make it observable
+class Transform : public std::enable_shared_from_this<Transform>, public ISubject {
+    glm::mat4 matrix;
     Transform() {
-        // Inicializa a matriz como identidade
         matrix = glm::mat4(1.0f);
     }
     Transform(glm::mat4 matrix) :
@@ -43,32 +42,39 @@ class Transform : public std::enable_shared_from_this<Transform> {
             return matrix;
         }
 
+        // --- Every method that modifies the matrix must call notify() ---
+
         TransformPtr reset() {
             matrix = glm::mat4(1.0f);
+            notify();
             return shared_from_this();
         }
 
-        TransformPtr setMatrix(glm::mat4 matrix) {
-            this->matrix = matrix;
+        TransformPtr setMatrix(glm::mat4 new_matrix) {
+            this->matrix = new_matrix;
+            notify();
             return shared_from_this();
         }
 
         TransformPtr multiply(const glm::mat4& other) {
             matrix = matrix * other;
+            notify();
             return shared_from_this();
         }
 
         TransformPtr translate(float x, float y, float z) {
             matrix = glm::translate(matrix, glm::vec3(x, y, z));
+            notify();
             return shared_from_this();
         }
 
         TransformPtr setTranslate(float x, float y, float z) {
             reset();
             translate(x, y, z);
+            notify();
             return shared_from_this();
         }
-
+        
         TransformPtr rotate(float angle_degrees, float axis_x, float axis_y, float axis_z) {
             // checks if axis is normalized
             float angle_radians = glm::radians(angle_degrees);
@@ -78,28 +84,33 @@ class Transform : public std::enable_shared_from_this<Transform> {
                 axis = glm::normalize(axis);
             }
             matrix = glm::rotate(matrix, angle_radians, axis);
+            notify();
             return shared_from_this();
         }
 
         TransformPtr setRotate(float angle_degrees, float axis_x, float axis_y, float axis_z) {
             reset();
             rotate(angle_degrees, axis_x, axis_y, axis_z);
+            notify();
             return shared_from_this();
         }
 
         TransformPtr scale(float x, float y, float z) {
             matrix = glm::scale(matrix, glm::vec3(x, y, z));
+            notify();
             return shared_from_this();
         }
 
         TransformPtr setScale(float x, float y, float z) {
             reset();
             scale(x, y, z);
+            notify();
             return shared_from_this();
         }
 
         TransformPtr orthographic(float left, float right, float bottom, float top, float near, float far) {
             matrix = glm::ortho(left, right, bottom, top, near, far);
+            notify();
             return shared_from_this();
         }
 };

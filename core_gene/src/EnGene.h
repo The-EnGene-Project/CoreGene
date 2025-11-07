@@ -7,7 +7,9 @@
 #include "gl_base/input_handler.h"
 #include "gl_base/shader.h"
 #include "gl_base/transform.h"
+#include "gl_base/error.h"
 #include "core/EnGene_config.h"
+#include "core/scene.h"
 #include "exceptions/base_exception.h"
 
 #include <iostream>
@@ -62,10 +64,25 @@ public:
         m_base_shader = shader::Shader::Make();
         m_base_shader->AttachVertexShader(config.base_vertex_shader_source);
         m_base_shader->AttachFragmentShader(config.base_fragment_shader_source);
-        m_base_shader->Link();
+        GL_CHECK("EnGene::shader attach");
+        m_base_shader->Bake();
+        GL_CHECK("EnGene::shader bake");
 
         if (config.base_vertex_shader_source == EnGeneConfig::DEFAULT_VERTEX_SHADER) {
-            m_base_shader->configureUniform<glm::mat4>("M", transform::current);
+            m_base_shader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
+        }
+
+        // Get the scene's default camera (this also initializes the singleton)
+        auto active_cam = scene::graph()->getActiveCamera();
+
+        // Bind the camera's UBOs to the engine's base shader
+        if (active_cam) { // Good practice to check, though we expect it
+            active_cam->bindToShader(m_base_shader);
+
+            // Re-bake the shader to activate the new UBO bindings
+            m_base_shader->Bake();
+        } else {
+            std::cerr << "CRITICAL WARNING: SceneGraph failed to provide a default camera." << std::endl;
         }
 
         m_clear_color[0] = config.clearColor[0];
@@ -75,6 +92,7 @@ public:
 
         glClearColor(m_clear_color[0], m_clear_color[1], m_clear_color[2], m_clear_color[3]);
         glEnable(GL_DEPTH_TEST);
+        GL_CHECK("EnGene::end of constructor");
     }
 
     ~EnGene() {
@@ -137,6 +155,7 @@ public:
             shader::stack()->push(m_base_shader);
             
             if (m_user_render_func) {
+                uniform::manager().applyPerFrame();
                 m_user_render_func(alpha);
             }
 
@@ -174,9 +193,10 @@ private:
         }
 
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
         m_window = glfwCreateWindow(m_width, m_height, m_title.c_str(), nullptr, nullptr);
         if (!m_window) {
@@ -188,6 +208,10 @@ private:
         if (!gladLoadGL(glfwGetProcAddress)) {
             throw std::runtime_error("Failed to initialize GLAD OpenGL context");
         }
+
+        // Error::EnableDebugCallback() will check if the debug context
+        // was successfully created before enabling.
+        Error::EnableDebugCallback();
 
         // Apply the user-provided input handler
         m_input_handler->applyCallbacks(m_window);

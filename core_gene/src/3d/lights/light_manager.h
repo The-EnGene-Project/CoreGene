@@ -178,12 +178,16 @@ public:
      * This method should be called once per frame before rendering. It:
      * 1. Resets all lights to INACTIVE
      * 2. Iterates through registered components
-     * 3. Extracts light data and transforms it to world space
-     * 4. Packs data into the CPU buffer
-     * 5. Triggers GPU upload via the uniform manager
+     * 3. Checks if the component's owner node is applicable (visible)
+     * 4. Extracts light data and transforms it to world space
+     * 5. Packs data into the CPU buffer
+     * 6. Triggers GPU upload via the uniform manager
      * 
      * The method handles all three light types (directional, point, spot) and
      * logs a warning if the scene contains more lights than MAX_LIGHTS.
+     * 
+     * Lights attached to non-applicable (hidden) scene nodes are automatically
+     * skipped, allowing for scene-specific lighting.
      * 
      * @note This method uses dynamic_cast to determine light types at runtime.
      * @note Lights beyond MAX_LIGHTS are ignored with a warning message.
@@ -204,6 +208,28 @@ public:
                 std::cerr << "Warning: Scene has more lights than MAX_SCENE_LIGHTS (" 
                           << MAX_LIGHTS << "). Extra lights will be ignored." << std::endl;
                 break;
+            }
+            
+            // Skip lights whose owner node or any ancestor is not applicable (hidden)
+            // This allows scene-specific lighting by hiding entire scene branches
+            auto owner = component->getOwner();
+            if (!owner) {
+                continue;
+            }
+            
+            // Check if this node or any ancestor is non-applicable
+            bool is_visible = true;
+            auto current_node = owner;
+            while (current_node) {
+                if (!current_node->getApplicability()) {
+                    is_visible = false;
+                    break;
+                }
+                current_node = current_node->getParent();
+            }
+            
+            if (!is_visible) {
+                continue;
             }
             
             light::LightPtr light = component->getLight();
@@ -252,6 +278,7 @@ public:
                 );
                 data.direction = glm::vec4(0.0f);  // Unused for point lights
             }
+
             
             light_index++;
         }

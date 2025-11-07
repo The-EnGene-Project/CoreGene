@@ -15,6 +15,7 @@
 #include <other_genes/3d_shapes/cylinder.h>
 #include <other_genes/input_handlers/arcball_input_handler.h>
 #include <gl_base/uniforms/uniform.h>
+#include <other_genes/environment_mapping.h>
 
 /**
  * @brief Project 2: Mixed Scenes (Table + Solar System)
@@ -100,12 +101,15 @@ enum class ActiveScene {
 int main() {
     auto* handler = new input::InputHandler();
     
-    // Separate arcball handlers for each interactive camera
-    std::shared_ptr<arcball::ArcBallInputHandler> table_arcball;
-    std::shared_ptr<arcball::ArcBallInputHandler> solar_arcball;
+    // Separate arcball controllers for each interactive camera
+    std::shared_ptr<arcball::ArcBallController> table_arcball;
+    std::shared_ptr<arcball::ArcBallController> solar_arcball;
 
     shader::ShaderPtr phong_shader;
     shader::ShaderPtr emissive_shader;
+
+    // Environment mapping for cylinder
+    std::shared_ptr<environment::EnvironmentMapping> cylinder_env_mapping;
 
     // Shared resources
     texture::CubemapPtr tableCubemap;
@@ -176,8 +180,17 @@ int main() {
         }
 
         // 3. Create Textures and Skyboxes
-        tableCubemap = createProceduralCubemap(false);
+        tableCubemap = createProceduralCubemap(true);
         spaceCubemap = createProceduralCubemap(true);
+        
+        // 3.5. Create Environment Mapping for Cylinder
+        environment::EnvironmentMappingConfig env_config;
+        env_config.cubemap = tableCubemap;
+        env_config.mode = environment::MappingMode::FRESNEL;
+        env_config.index_of_refraction = 1.5f;
+        env_config.fresnel_power = 2.0f;
+        env_config.base_color = glm::vec3(0.1f, 0.4f, 0.8f); // Blue-ish base color
+        cylinder_env_mapping = std::make_shared<environment::EnvironmentMapping>(env_config);
         
         woodTexture = createProceduralTexture({0.4f, 0.2f, 0.1f}, {0.3f, 0.15f, 0.05f});
         marbleTexture = createProceduralTexture({0.9f, 0.9f, 0.9f}, {0.7f, 0.7f, 0.8f});
@@ -195,7 +208,7 @@ int main() {
         auto cylinder_geom = Cylinder::Make(1.0f, 1.0f, 32);
 
         // 5. Create Materials
-        auto table_material = material::Material::Make(glm::vec3(1.0f, 1.0f, 1.0f));
+        auto table_material = material::Material::Make(glm::vec3(0.0f, 0.6f, 0.0f));
         table_material->setShininess(32.0f);
 
         auto leg_material = material::Material::Make(glm::vec3(0.6f, 0.3f, 0.1f));
@@ -233,8 +246,8 @@ int main() {
         // Table Scene Lights
         light::DirectionalLightParams dir_params;
         dir_params.base_direction = glm::vec3(-0.5f, -1.0f, -0.8f);
-        dir_params.ambient = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f);
-        dir_params.diffuse = glm::vec4(0.6f, 0.6f, 0.6f, 1.0f);
+        dir_params.ambient = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f);
+        dir_params.diffuse = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f);
         dir_params.specular = glm::vec4(0.3f, 0.3f, 0.3f, 1.0f);
         auto directional_light = light::DirectionalLight::Make(dir_params);
         scene::graph()->buildAt("table_scene")
@@ -250,7 +263,7 @@ int main() {
         spot_params.constant = 1.0f;
         spot_params.linear = 0.09f;
         spot_params.quadratic = 0.032f;
-        spot_params.cutOff = glm::cos(glm::radians(30.0f));
+        spot_params.cutOff = glm::cos(glm::radians(45.0f));
         auto spot_light = light::SpotLight::Make(spot_params);
         auto spot_transform = transform::Transform::Make();
         scene::graph()->buildAt("table_scene")
@@ -270,9 +283,9 @@ int main() {
         table_scene_vars->addUniform(uniform::Uniform<bool>::Make("u_hasNormalMap", []() { return false; }));
         table_scene_vars->addUniform(uniform::Uniform<bool>::Make("u_enableReflection", []() { return false; }));
 
-        // Table Top
+        // Table Top - separate transform node from geometry node
         auto table_top_vars = component::VariableComponent::Make(
-            uniform::Uniform<bool>::Make("u_hasDiffuseMap", [](){ return true; })
+            uniform::Uniform<bool>::Make("u_hasDiffuseMap", [](){ return false; })
         );
         table_top_vars->addUniform(uniform::Uniform<bool>::Make("u_hasRoughnessMap", [](){ return false; }));
         table_top_vars->addUniform(uniform::Uniform<bool>::Make("u_enableReflection", [](){ return false; }));
@@ -280,10 +293,13 @@ int main() {
         scene::graph()->buildAt("table_scene")
             .addNode("table_top")
                 .with<component::TransformComponent>(
-                    transform::Transform::Make()->translate(0.0f, 0.0f, 0.0f)->scale(6.0f, 0.2f, 4.0f))
+                    transform::Transform::Make()->translate(0.0f, 0.0f, 0.0f))
+            .addNode("table_top_geom")
+                .with<component::TransformComponent>(
+                    transform::Transform::Make()->scale(6.0f, 0.2f, 4.0f))
                 .addComponent(phong_shader_comp)
                 .with<component::MaterialComponent>(table_material)
-                .with<component::TextureComponent>(woodTexture, "u_diffuseMap", 0)
+                // .with<component::TextureComponent>(woodTexture, "u_diffuseMap", 0)
                 .addComponent(table_top_vars)
                 .addComponent(table_scene_vars)
                 .addComponent(no_clip)
@@ -297,8 +313,8 @@ int main() {
         leg_vars->addUniform(uniform::Uniform<bool>::Make("u_enableReflection", [](){ return false; }));
         
         std::vector<glm::vec3> leg_positions = {
-            glm::vec3( 2.8f, -2.1f,  1.8f), glm::vec3(-2.8f, -2.1f,  1.8f),
-            glm::vec3( 2.8f, -2.1f, -1.8f), glm::vec3(-2.8f, -2.1f, -1.8f)
+            glm::vec3( 2.8f, -2.0f,  1.8f), glm::vec3(-2.8f, -2.0f,  1.8f),
+            glm::vec3( 2.8f, -2.0f, -1.8f), glm::vec3(-2.8f, -2.0f, -1.8f)
         };
         for (int i = 0; i < 4; ++i) {
             scene::graph()->buildAt("table_top")
@@ -337,53 +353,68 @@ int main() {
                 .addComponent(sphere_clip)
                 .addComponent(component::GeometryComponent::Make(sphere_geom));
 
-        // Cylinder (reuse leg_vars since it has the same settings)
+        // Cylinder with Fresnel environment mapping
         scene::graph()->buildAt("table_top")
             .addNode("table_cylinder")
                 .with<component::TransformComponent>(
-                    transform::Transform::Make()->translate(-2.0f, 0.85f, -1.0f)->scale(0.5f, 0.75f, 0.5f))
-                .addComponent(phong_shader_comp)
-                .with<component::MaterialComponent>(leg_material)
-                .addComponent(leg_vars)
-                .addComponent(table_scene_vars)
-                .addComponent(no_clip)
+                    transform::Transform::Make()->translate(-2.0f, 0.75f, -1.0f)->scale(0.5f, 0.75f, 0.5f))
+                .with<component::ShaderComponent>(cylinder_env_mapping->getShader())
+                .with<component::CubemapComponent>(tableCubemap, "environmentMap", 0)
                 .addComponent(component::GeometryComponent::Make(cylinder_geom));
 
-        // Lamp (reuse leg_vars for all lamp parts)
+        // Lamp - separate transform nodes from geometry nodes
         scene::graph()->buildAt("table_top")
             .addNode("lamp_base")
                 .with<component::TransformComponent>(
-                    transform::Transform::Make()->translate(2.0f, 0.2f, 0.0f)->scale(0.7f, 0.1f, 0.7f))
+                    transform::Transform::Make()->translate(2.0f, 0.2f, 0.0f))
+            .addNode("lamp_base_geom")
+                .with<component::TransformComponent>(
+                    transform::Transform::Make()->scale(0.7f, 0.1f, 0.7f))
                 .addComponent(phong_shader_comp)
                 .with<component::MaterialComponent>(lamp_material)
                 .addComponent(leg_vars)
                 .addComponent(table_scene_vars)
                 .addComponent(no_clip)
-                .with<component::GeometryComponent>(cube_geom)
+                .with<component::GeometryComponent>(cube_geom);
+        
+        scene::graph()->buildAt("lamp_base")
             .addNode("lamp_arm1")
                 .with<component::TransformComponent>(
-                    transform::Transform::Make()->translate(0.0f, 1.0f, 0.0f)
-                    ->rotate(30.0f, 0.0f, 0.0f, 1.0f)->scale(0.1f, 1.0f, 0.1f))
+                    transform::Transform::Make()->translate(0.0f, 0.1f, 0.0f)
+                    ->rotate(-30.0f, 0.0f, 0.0f, 1.0f))
+            .addNode("lamp_arm1_geom")
+                .with<component::TransformComponent>(
+                    transform::Transform::Make()->scale(0.1f, 1.0f, 0.1f))
                 .addComponent(phong_shader_comp)
                 .with<component::MaterialComponent>(lamp_material)
                 .addComponent(leg_vars)
                 .addComponent(table_scene_vars)
                 .addComponent(no_clip)
-                .addComponent(component::GeometryComponent::Make(cube_geom))
+                .addComponent(component::GeometryComponent::Make(cube_geom));
+        
+        scene::graph()->buildAt("lamp_arm1")
             .addNode("lamp_arm2")
                 .with<component::TransformComponent>(
                     transform::Transform::Make()->translate(0.0f, 1.0f, 0.0f)
-                    ->rotate(-60.0f, 0.0f, 0.0f, 1.0f)->scale(1.0f, 0.1f, 1.0f))
-                .addComponent(phong_shader_comp)
+                    ->rotate(60.0f, 0.0f, 0.0f, 1.0f))
+            .addNode("lamp_arm2_geom")
+                .with<component::TransformComponent>(
+                    transform::Transform::Make()->scale(0.1f, 1.0f, 0.1f))
+              .addComponent(phong_shader_comp)
                 .with<component::MaterialComponent>(lamp_material)
                 .addComponent(leg_vars)
                 .addComponent(table_scene_vars)
                 .addComponent(no_clip)
-                .addComponent(component::GeometryComponent::Make(cube_geom))
+                .addComponent(component::GeometryComponent::Make(cube_geom));
+        
+        scene::graph()->buildAt("lamp_arm2")
             .addNode("lamp_head")
                 .with<component::TransformComponent>(
-                    transform::Transform::Make()->translate(1.0f, 0.0f, 0.0f)
-                    ->rotate(75.0f, 0.0f, 0.0f, 1.0f)->scale(0.4f, 0.6f, 0.4f))
+                    transform::Transform::Make()->translate(0.2f, 0.5f, 0.0f)
+                    ->rotate(75.0f, 0.0f, 0.0f, 1.0f))
+            .addNode("lamp_head_geom")
+                .with<component::TransformComponent>(
+                    transform::Transform::Make()->scale(0.4f, 0.6f, 0.4f))
                 .addComponent(phong_shader_comp)
                 .with<component::MaterialComponent>(lamp_material)
                 .addComponent(leg_vars)
@@ -393,7 +424,7 @@ int main() {
 
         // Parent spotlight to lamp head
         auto spot_light_node = scene::graph()->getNodeByName("table_spot_light");
-        auto lamp_head_node = scene::graph()->getNodeByName("lamp_head");
+        auto lamp_head_node = scene::graph()->getNodeByName("lamp_head_geom");
         if (spot_light_node && lamp_head_node) {
             // Remove from current parent
             auto current_parent = spot_light_node->getParent();
@@ -567,21 +598,20 @@ int main() {
         // ========== INPUT HANDLERS ==========
         light::manager().apply();
         
-        // Create separate arcball handlers for each scene
+        // Create separate arcball controllers for each scene
         // Table Scene Arcball - closer zoom limits, orbits around table center
-        table_arcball = arcball::attachArcballTo(*handler);
+        table_arcball = arcball::ArcBallController::CreateFromCameraNode("table_camera_node");
         table_arcball->setTarget(glm::vec3(0.0f, 0.0f, 0.0f));
         table_arcball->setZoomLimits(2.0f, 20.0f);
         table_arcball->setSensitivity(0.005f, 1.0f, 0.001f);
+        table_arcball->attachTo(*handler);  // Start with table arcball active
         
         // Solar System Arcball - wider zoom limits, orbits around solar system center
-        solar_arcball = std::make_shared<arcball::ArcBallInputHandler>();
+        solar_arcball = arcball::ArcBallController::CreateFromCameraNode("global_camera_node");
         solar_arcball->setTarget(glm::vec3(0.0f, 0.0f, 0.0f));
         solar_arcball->setZoomLimits(10.0f, 100.0f);
         solar_arcball->setSensitivity(0.005f, 1.0f, 0.002f);
-        
-        // Start with table arcball active (since table scene is initial scene)
-        // solar_arcball is created but not attached yet
+        // solar_arcball is created but not attached yet (will attach when switching to solar scene)
 
         handler->registerCallback<input::InputType::KEY>([&](GLFWwindow* window, int key, int scancode, int action, int mods) {
             if (action != GLFW_PRESS) return; // Only respond to key press, not release

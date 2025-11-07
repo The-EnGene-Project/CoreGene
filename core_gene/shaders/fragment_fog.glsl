@@ -52,8 +52,8 @@ uniform bool u_hasRoughnessMap;
 uniform bool u_hasDiffuseMap;
 
 // === Fog uniforms ===
-uniform vec3 fcolor;     // cor da fog
-uniform float fdensity;  // densidade da fog
+uniform vec3 fogcolor;     // cor da fog
+uniform float fogdensity;  // densidade da fog
 
 // ======================================================
 // --- calcula TBN no fragment shader a partir das normais e tangentes interpoladas ---
@@ -144,10 +144,11 @@ void main()
     }
 
     // === Fog ===
+    totalLight = clamp(totalLight, 0.0, 1.0);
     float distance = length(u_viewPos.xyz - v_fragPos);
-    float fogFactor = exp(-pow(fdensity * distance, 2.0));
+    float fogFactor = exp(-pow(fogdensity * distance, 2.0));
     fogFactor = clamp(fogFactor, 0.0, 1.0);
 
-    vec3 finalColor = mix(fcolor, totalLight, fogFactor);
+    vec3 finalColor = mix(fogcolor, totalLight, fogFactor);
     FragColor = vec4(finalColor, 1.0);
 }

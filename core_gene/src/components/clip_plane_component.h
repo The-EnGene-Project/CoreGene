@@ -32,14 +32,15 @@ class ClipPlaneComponent : public Component {
 private:
     std::string m_uniformName; 
     std::vector<glm::vec4> m_localPlanes; 
-    component::CameraPtr m_camera; 
-    uniform::UniformPtr<std::vector<glm::vec4>> m_uniformPlanes;
+    component::CameraPtr m_camera;
+    std::vector<glm::vec4> m_transformedPlanes;
+    GLint m_location;
 
 protected:
     explicit ClipPlaneComponent(const std::string& uniformName)
         : Component(ComponentPriority::APPEARANCE),
           m_uniformName(uniformName),
-          m_uniformPlanes(uniform::Uniform<std::vector<glm::vec4>>::Make(uniformName))
+          m_location(-1)
     {}
 
 public:
@@ -76,7 +77,17 @@ public:
         if (!shader)
             return;
 
+        // Obtém/atualiza a localização do uniform se necessário
+        if (m_location == -1) {
+            m_location = glGetUniformLocation(shader->GetShaderID(), m_uniformName.c_str());
+            if (m_location == -1) {
+                std::cerr << "Warning: Uniform '" << m_uniformName 
+                         << "' not found in shader program." << std::endl;
+                return;
+            }
+        }
 
+        // Calcula as transformações necessárias
         glm::mat4 model = transform::current();
         glm::mat4 view = glm::mat4(1.0f);
 
@@ -86,16 +97,19 @@ public:
         glm::mat4 modelView = view * model;
         glm::mat4 mit = glm::transpose(glm::inverse(modelView));
 
-        std::vector<glm::vec4> transformedPlanes;
-        transformedPlanes.reserve(m_localPlanes.size());
+        // Transforma os planos
+        m_transformedPlanes.clear();
+        m_transformedPlanes.reserve(m_localPlanes.size());
 
         for (auto& p : m_localPlanes)
-            transformedPlanes.push_back(mit * p);
+            m_transformedPlanes.push_back(mit * p);
 
-        m_uniformPlanes->set(transformedPlanes);
-        m_uniformPlanes->apply(shader);
+        // Envia todos os planos transformados de uma vez
+        glUniform4fv(m_location, static_cast<GLsizei>(m_transformedPlanes.size()),
+                     glm::value_ptr(m_transformedPlanes[0]));
 
-        for (size_t i = 0; i < m_localPlanes.size(); ++i)
+        // Ativa os clip planes
+        for (size_t i = 0; i < m_transformedPlanes.size(); ++i)
             glEnable(GL_CLIP_DISTANCE0 + static_cast<int>(i));
     }
 

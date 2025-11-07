@@ -14,7 +14,7 @@ namespace component {
 /**
  * @brief VariableComponent
  * 
- * Exemplo de uso:
+ * @example
  * ```cpp
  * using namespace uniform;
  * using namespace component;
@@ -55,15 +55,23 @@ public:
         m_uniforms.push_back(std::move(uniform));
     }
 
-    virtual void apply() override {
-        auto shader = shader::stack()->peek();
-        if (!shader) return;
+    // Remove any uniform with the given name from the collection.
+    // If multiple uniforms share the same name, all will be removed.
+    void removeUniform(const std::string& name) {
+    for (auto it = m_uniforms.begin(); it != m_uniforms.end(); ) {
+        if (*it && (*it)->getName() == name) {
+            it = m_uniforms.erase(it); // erase retorna o iterador para o próximo elemento válido
+        } else {
+            ++it;
+        }
+    }
+}
 
-        GLuint programID = shader->GetShaderID();
+    virtual void apply() override {
+
         for (auto& u : m_uniforms) {
             u->findLocation(programID);
-            if (u->isValid())
-                u->apply();
+            u->apply();
         }
     }
 

@@ -7,6 +7,54 @@
 
 namespace geometry {
 
+/**
+ * @brief Vertex shader source for skybox rendering.
+ * 
+ * This shader transforms the skybox cube vertices and passes position as texture coordinates.
+ * The z-coordinate is set to w to ensure the skybox is always at maximum depth.
+ */
+inline constexpr const char* SKYBOX_VERTEX_SHADER = R"(
+#version 430 core
+
+layout(location = 0) in vec3 a_position;
+
+out vec3 v_texCoords;
+
+uniform mat4 u_viewProjection;
+
+void main() {
+    vec4 pos = u_viewProjection * vec4(a_position, 1.0);
+    
+    // Set z = w to ensure skybox is always at maximum depth
+    gl_Position = pos.xyww;
+    
+    // Use local position as texture coordinate
+    v_texCoords = a_position;
+}
+)";
+
+/**
+ * @brief Fragment shader source for skybox rendering.
+ * 
+ * This shader samples the cubemap texture using the interpolated position as texture coordinates.
+ * Includes coordinate system conversion for EnGene's coordinate system.
+ */
+inline constexpr const char* SKYBOX_FRAGMENT_SHADER = R"(
+#version 430 core
+
+in vec3 v_texCoords;
+out vec4 FragColor;
+
+uniform samplerCube u_skybox;
+
+void main() {
+    // Coordinate system conversion for EnGene (if needed)
+    vec3 texCoords = vec3(v_texCoords.x, v_texCoords.y, -v_texCoords.z);
+    
+    FragColor = texture(u_skybox, texCoords);
+}
+)";
+
 class SkyboxCube;
 using SkyboxCubePtr = std::shared_ptr<SkyboxCube>;
 

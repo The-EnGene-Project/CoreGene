@@ -32,7 +32,6 @@ class ClipPlaneComponent : public Component {
 private:
     std::string m_uniformName; 
     std::vector<glm::vec4> m_localPlanes; 
-    component::CameraPtr m_camera;
     std::vector<glm::vec4> m_transformedPlanes;
     GLint m_location;
 
@@ -46,11 +45,11 @@ protected:
 public:
 
     static ClipPlaneComponentPtr Make(const std::string& name) {
-        return std::make_shared<ClipPlaneComponent>(name);
+        return ClipPlaneComponentPtr(new ClipPlaneComponent(name));
     }
 
-    static ClipPlaneComponentPtr Make(const std::string& name, float a, float b, float c, float d) {
-        auto comp = std::make_shared<ClipPlaneComponent>(name);
+    static ClipPlaneComponentPtr Make(float a, float b, float c, float d, const std::string& name,) {
+        auto comp = ClipPlaneComponentPtr(new ClipPlaneComponent(name));
         comp->addPlane(a, b, c, d);
         return comp;
     }
@@ -62,8 +61,6 @@ public:
     }
 
     void clearPlanes() { m_localPlanes.clear(); }
-
-    void setCamera(component::CameraPtr camera) { m_camera = camera; }
 
     const std::vector<glm::vec4>& getPlanes() const { return m_localPlanes; }
 
@@ -91,8 +88,9 @@ public:
         glm::mat4 model = transform::current();
         glm::mat4 view = glm::mat4(1.0f);
 
-        if (m_camera)
-            view = m_camera->getViewMatrix();
+        auto camera = scene::graph()->getActiveCamera();
+        if (camera)
+            view = camera->getViewMatrix();
 
         glm::mat4 modelView = view * model;
         glm::mat4 mit = glm::transpose(glm::inverse(modelView));

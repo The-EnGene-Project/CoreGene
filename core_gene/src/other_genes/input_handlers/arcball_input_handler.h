@@ -95,47 +95,35 @@ public:
         auto controller = ArcBallController::CreateFromCamera();
         return std::make_shared<ArcBallInputHandler>(controller);
     }
+    
+    /**
+     * @brief Static factory method to create an ArcBall input handler from a specific camera node.
+     * @param camera_node_name Name of the scene node containing the camera
+     * @return Shared pointer to a new ArcBallInputHandler initialized from the specified camera
+     */
+    static std::shared_ptr<ArcBallInputHandler> CreateFromCameraNode(const std::string& camera_node_name) {
+        auto controller = ArcBallController::CreateFromCameraNode(camera_node_name);
+        return std::make_shared<ArcBallInputHandler>(controller);
+    }
+    
+    /**
+     * @brief Static factory method to create an ArcBall input handler from a specific camera node.
+     * @param camera_node Shared pointer to the scene node containing the camera
+     * @return Shared pointer to a new ArcBallInputHandler initialized from the specified camera
+     */
+    static std::shared_ptr<ArcBallInputHandler> CreateFromCameraNode(scene::SceneNodePtr camera_node) {
+        auto controller = ArcBallController::CreateFromCameraNode(camera_node);
+        return std::make_shared<ArcBallInputHandler>(controller);
+    }
 
+    /**
+     * @brief Gets the underlying controller for direct access.
+     * @return Reference to the ArcBallController
+     */
     ArcBallController& getController() {
         return *m_controller;
     }
     
-    // --- Simple Attachment Interface ---
-    
-    /**
-     * @brief Attaches arcball input handling to another input handler.
-     * This registers the arcball callbacks with the target handler, allowing
-     * the arcball to work through that handler's input system.
-     * @param target_handler Reference to the input handler to attach to
-     */
-    void attachTo(input::InputHandler& target_handler) {
-        if (!m_controller) return;
-        
-        // Register arcball callbacks with the target handler
-        target_handler.registerCallback<input::InputType::MOUSE_BUTTON>(
-            createMouseButtonCallback(m_controller));
-        target_handler.registerCallback<input::InputType::CURSOR_POSITION>(
-            createCursorPosCallback(m_controller));
-        target_handler.registerCallback<input::InputType::SCROLL>(
-            createScrollCallback(m_controller));
-    }
-    
-    /**
-     * @brief Detaches arcball input handling from another input handler.
-     * This clears the arcball callbacks from the target handler by registering
-     * null callbacks, effectively disabling arcball input.
-     * @param target_handler Reference to the input handler to detach from
-     */
-    void detachFrom(input::InputHandler& target_handler) {
-        // Register null callbacks to clear arcball handling
-        target_handler.registerCallback<input::InputType::MOUSE_BUTTON>(
-            input::InputHandler::MouseButtonCallback{});
-        target_handler.registerCallback<input::InputType::CURSOR_POSITION>(
-            input::InputHandler::CursorPosCallback{});
-        target_handler.registerCallback<input::InputType::SCROLL>(
-            input::InputHandler::ScrollCallback{});
-    }
-
     /**
      * @brief Synchronizes the arcball controller's target with the current camera target.
      * This should be called each frame before rendering to ensure the arcball
@@ -252,44 +240,6 @@ private:
     /// Shared pointer to the ArcBall controller
     std::shared_ptr<ArcBallController> m_controller;
 };
-
-// --- Convenience Static Functions ---
-
-/**
- * @brief Convenience function to quickly attach arcball controls to an existing input handler.
- * Creates an arcball controller from the current camera and attaches it to the target handler.
- * @param target_handler Reference to the input handler to attach arcball controls to
- * @return Shared pointer to the created ArcBallInputHandler for further configuration
- */
-inline std::shared_ptr<ArcBallInputHandler> attachArcballTo(input::InputHandler& target_handler) {
-    auto arcball_handler = ArcBallInputHandler::CreateFromCamera();
-    arcball_handler->attachTo(target_handler);
-    return arcball_handler;
-}
-
-/**
- * @brief Convenience function to quickly attach arcball controls with a custom controller.
- * @param target_handler Reference to the input handler to attach arcball controls to
- * @param controller Shared pointer to the ArcBall controller to use
- * @return Shared pointer to the created ArcBallInputHandler for further configuration
- */
-inline std::shared_ptr<ArcBallInputHandler> attachArcballTo(input::InputHandler& target_handler, 
-                                                           std::shared_ptr<ArcBallController> controller) {
-    auto arcball_handler = std::make_shared<ArcBallInputHandler>(controller);
-    arcball_handler->attachTo(target_handler);
-    return arcball_handler;
-}
-
-/**
- * @brief Convenience function to quickly detach arcball controls from an input handler.
-* This clears all arcball-related callbacks from the target handler.
- * @param target_handler Reference to the input handler to detach arcball controls from
- */
-inline void detachArcballFrom(input::InputHandler& target_handler) {
-    // Create a temporary handler just to call detachFrom
-    auto temp_handler = std::make_shared<ArcBallInputHandler>(nullptr);
-    temp_handler->detachFrom(target_handler);
-}
 
 } // namespace arcball
 

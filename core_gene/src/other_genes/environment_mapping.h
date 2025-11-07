@@ -5,8 +5,8 @@
 #include <functional>
 #include <iostream>
 #include <glm/glm.hpp>
-#include "../core_gene/src/gl_base/cubemap.h"
-#include "../core_gene/src/gl_base/shader.h"
+#include "gl_base/cubemap.h"
+#include "gl_base/shader.h"
 
 namespace environment {
 

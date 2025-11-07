@@ -52,10 +52,10 @@ protected:
         // Create skybox cube geometry
         m_cube_geometry = geometry::SkyboxCube::Make();
         
-        // Create skybox shader from shader files
+        // Create skybox shader from embedded source strings
         m_skybox_shader = shader::Shader::Make(
-            "core_gene/shaders/skybox_vertex.glsl",
-            "core_gene/shaders/skybox_fragment.glsl"
+            geometry::SKYBOX_VERTEX_SHADER,
+            geometry::SKYBOX_FRAGMENT_SHADER
         );
         
         // Configure cubemap sampler uniform using cubemap sampler provider

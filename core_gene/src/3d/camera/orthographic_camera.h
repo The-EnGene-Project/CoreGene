@@ -34,11 +34,9 @@ protected:
 
     /**
      * @brief Protected constructor to create an orthographic camera.
-     * @param matrices_binding_point The UBO binding point for CameraMatrices.
-     * @param position_binding_point The UBO binding point for CameraPosition.
      */
-    explicit OrthographicCamera(GLuint matrices_binding_point, GLuint position_binding_point)
-        : Camera3D(matrices_binding_point, position_binding_point),
+    explicit OrthographicCamera()
+        : Camera3D(),
           m_left(-1.0f), m_right(1.0f), 
           m_bottom(-1.0f), m_top(1.0f),
           m_near_plane(-1.0f), m_far_plane(1.0f),
@@ -58,12 +56,10 @@ public:
 
     /**
      * @brief Factory function to create a new OrthographicCamera.
-     * @param matrices_binding_point The UBO binding point for CameraMatrices. Defaults to 0.
-     * @param position_binding_point The UBO binding point for CameraPosition. Defaults to 1.
      * @return A shared pointer to the newly created OrthographicCamera.
      */
-    static OrthographicCameraPtr Make(GLuint matrices_binding_point = 0, GLuint position_binding_point = 1) {
-        return std::shared_ptr<OrthographicCamera>(new OrthographicCamera(matrices_binding_point, position_binding_point));
+    static OrthographicCameraPtr Make() {
+        return std::shared_ptr<OrthographicCamera>(new OrthographicCamera());
     }
 
     // --- Configuration ---

@@ -24,6 +24,8 @@ class ObservedTransformComponent : public TransformComponent, public IObserver, 
 protected:
     glm::mat4 m_world_transform_cache;
     bool m_is_dirty;
+    bool m_observers_registered;
+    std::vector<transform::TransformPtr> m_observed_transforms;
 
     ObservedTransformComponent(
         transform::TransformPtr t, 
@@ -32,50 +34,69 @@ protected:
         unsigned int max_bound = static_cast<unsigned int>(ComponentPriority::CAMERA)
     ) :
         TransformComponent(t, priority, min_bound, max_bound),
-        m_world_transform_cache(1.0f)
+        m_world_transform_cache(1.0f),
+        m_is_dirty(true),
+        m_observers_registered(false)
     {
-        m_is_dirty = true; // Start dirty to guarantee an initial update
         // ** CRITICAL **: Subscribe to the raw transform object's notifications.
         getTransform()->addObserver(this);
     }
 
     /**
-     * @brief Marks this component and all descendant components as dirty.
-     *
-     * This method uses the Node's `visit` traversal functionality to ensure
-     * that the dirty flag is propagated throughout the entire node hierarchy,
-     * even if intermediate nodes do not have an ObservedTransformComponent.
+     * @brief Registers this component as an observer to all relevant transforms.
+     * This includes:
+     * - All ancestor transforms (from parent nodes up to root)
+     * - Sibling transforms with lower priority (on the same node)
      */
-    void markTransformAsDirty() {
-        // OPTIMIZATION: If we are already dirty, our children have already been marked.
-        // This prevents redundant work on sequential transform changes.
-        if (m_is_dirty) {
-            return;
-        }
+    void registerTransformObservers() {
+        // First, unregister from any previously observed transforms
+        unregisterTransformObservers();
 
-        // Mark myself as dirty.
-        m_is_dirty = true;
-
-        // If this component isn't attached to a node, we can't propagate.
         if (!m_owner) {
             return;
         }
 
-        // Define the action to perform on the owner and every descendant node.
-        auto propagate_dirty_flag = [](scene::SceneNodePtr node) {
-            // Use getAll<> for robustness, in case a node has multiple components of this type.
-            auto components = node->payload().getAll<ObservedTransformComponent>();
-            for (const auto& comp : components) {
-                if (comp) {
-                    // The `if (m_is_dirty)` check at the top of this function will
-                    // efficiently stop further recursion down this branch if it has already been visited.
-                    comp->markTransformAsDirty();
+        // 1. Register sibling transforms with lower priority on the same node
+        auto sibling_transforms = m_owner->payload().getAll<TransformComponent>();
+        for (const auto& transform_comp : sibling_transforms) {
+            if (transform_comp && transform_comp->getTransform() && 
+                transform_comp.get() != this && // Don't observe ourselves
+                transform_comp->getPriority() < this->getPriority()) { // Only lower priority
+                
+                transform_comp->getTransform()->addObserver(this);
+                m_observed_transforms.push_back(transform_comp->getTransform());
+            }
+        }
+
+        // 2. Walk up the scene graph and register as observer to all ancestor transforms
+        scene::SceneNodePtr current_parent = m_owner->getParent();
+        while (current_parent) {
+            auto ancestor_transforms = current_parent->payload().getAll<TransformComponent>();
+            
+            for (const auto& transform_comp : ancestor_transforms) {
+                if (transform_comp && transform_comp->getTransform()) {
+                    transform_comp->getTransform()->addObserver(this);
+                    m_observed_transforms.push_back(transform_comp->getTransform());
                 }
             }
-        };
-
-        m_owner->visit(propagate_dirty_flag, {}, true);
+            
+            current_parent = current_parent->getParent();
+        }
     }
+
+    /**
+     * @brief Unregisters this component from all transform observations.
+     */
+    void unregisterTransformObservers() {
+        for (auto& transform : m_observed_transforms) {
+            if (transform) {
+                transform->removeObserver(this);
+            }
+        }
+        m_observed_transforms.clear();
+    }
+
+
 
     /**
      * @brief A helper to calculate the combined local transform for a given node.
@@ -103,10 +124,11 @@ protected:
 
 public:
     ~ObservedTransformComponent() {
-        // Clean up the subscription when this component is destroyed.
+        // Clean up all subscriptions when this component is destroyed.
         if (getTransform()) {
             getTransform()->removeObserver(this);
         }
+        unregisterTransformObservers();
     }
 
     static ObservedTransformComponentPtr Make(transform::TransformPtr t) {
@@ -124,19 +146,26 @@ public:
 
     // --- Layer 1: The First Notification ---
     /**
-     * @brief Called by the raw `transform::Transform` when the local matrix changes.
+     * @brief Called when any observed transform changes (own, sibling, or ancestor).
+     * Since we observe all relevant transforms, we only need to mark ourselves as dirty.
+     * Descendants will be notified directly by their own ancestor observers.
      */
     void onNotify(const ISubject* subject) override {
-        // The raw local transform has changed. Mark our cache as dirty.
-        // Kick off the self-contained, recursive dirtying process.
-        markTransformAsDirty();
+        m_is_dirty = true;
     }
 
     // --- Layer 2: The Traversal Update and Second Notification ---
     /**
      * @brief During the scene traversal, this updates the cache and notifies final listeners.
+     * Also registers as observer to relevant transforms on first apply.
      */
     void apply() override {
+        // Register transform observers on first apply (when component is attached to scene graph)
+        if (!m_observers_registered && m_owner) {
+            registerTransformObservers();
+            m_observers_registered = true;
+        }
+
         // First, perform the normal transform stack operation.
         TransformComponent::apply();
 
@@ -202,6 +231,16 @@ public:
 
     const char* getTypeName() const override {
         return "ObservedTransformComponent";
+    }
+
+    /**
+     * @brief Manually refresh transform observers.
+     * Call this if the scene graph hierarchy changes or components are added/removed
+     * after this component is added.
+     */
+    void refreshTransformObservers() {
+        unregisterTransformObservers();
+        registerTransformObservers();
     }
 };
 

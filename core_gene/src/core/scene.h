@@ -53,18 +53,28 @@ private:
         if (default_cam_node) {
             // 3. Add the component directly.
             //    (This is what the builder's '.with<>()' would have done).
-            default_cam_node->payload().addComponent(component::OrthographicCamera::Make(), default_cam_node);
+            default_cam_node->payload().addComponent(
+                component::OrthographicCamera::Make(),
+                default_cam_node
+            );
 
             // 4. Set the active camera from the new component.
             m_active_camera = default_cam_node->payload().get<component::Camera>();
+            
+            // 5. Activate it as the global camera (sets up the static UBO provider)
+            if (m_active_camera) {
+                auto camera3d = std::dynamic_pointer_cast<component::Camera3D>(m_active_camera);
+                if (camera3d) {
+                    camera3d->activateAsGlobalCamera3D();
+                } else {
+                    m_active_camera->activateAsGlobalCamera();
+                }
+            }
         } else {
             // This else block handles the case where addNode returns nullptr
             std::cerr << "CRITICAL ERROR: Failed to create default camera node in SceneGraph constructor." << std::endl;
             m_active_camera = nullptr; // Explicitly set to null
         }
-
-        // The active camera is the component we just added to the new node.
-        m_active_camera = default_cam_node->payload().get<component::Camera>();
 
         if (!m_active_camera) {
             // This else block handles the case where ComponentCollection::get returns nullptr
@@ -242,6 +252,16 @@ public:
             return;
         }
         m_active_camera = camera;
+        
+        // Update the static UBO(s) to use the new camera's provider
+        // Check if it's a 3D camera (which needs both matrices and position UBOs)
+        auto camera3d = std::dynamic_pointer_cast<component::Camera3D>(camera);
+        if (camera3d) {
+            camera3d->activateAsGlobalCamera3D();
+        } else {
+            // Regular camera (only matrices UBO)
+            camera->activateAsGlobalCamera();
+        }
     }
 
     component::CameraPtr getActiveCamera() const {

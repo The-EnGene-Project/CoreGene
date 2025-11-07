@@ -98,16 +98,16 @@ protected:
 
 public:
     /// @brief Static default uniform name for ambient material property.
-    inline static std::string s_ambient_name = "u_material.ambient";
+    inline static std::string s_ambient_name = "u_material_ambient";
     
     /// @brief Static default uniform name for diffuse material property.
-    inline static std::string s_diffuse_name = "u_material.diffuse";
+    inline static std::string s_diffuse_name = "u_material_diffuse";
     
     /// @brief Static default uniform name for specular material property.
-    inline static std::string s_specular_name = "u_material.specular";
+    inline static std::string s_specular_name = "u_material_specular";
     
     /// @brief Static default uniform name for shininess material property.
-    inline static std::string s_shininess_name = "u_material.shininess";
+    inline static std::string s_shininess_name = "u_material_shininess";
 
     /**
      * @brief Sets the global default uniform name for ambient property.

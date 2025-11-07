@@ -9,3 +9,5 @@
 #include "light_component.h"
 #include "material_component.h"
 #include "skybox_component.h"
+#include "clip_plane_component.h"
+#include "variable_component.h"

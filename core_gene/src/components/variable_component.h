@@ -3,9 +3,8 @@
 #pragma once
 
 #include "component.h"
-#include "../gl_base/shader_stack.h"
 #include "../gl_base/shader.h"
-#include "../gl_base/uniform.h"
+#include "../gl_base/uniforms/uniform.h"
 #include <vector>
 #include <memory>
 
@@ -42,7 +41,7 @@ protected:
 
 public:
     static VariableComponentPtr Make(uniform::UniformInterfacePtr uniform) {
-        auto comp = std::make_shared<VariableComponent>();
+        auto comp = VariableComponentPtr(new VariableComponent());
         comp->addUniform(std::move(uniform));
         return comp;
     }
@@ -58,18 +57,23 @@ public:
     // Remove any uniform with the given name from the collection.
     // If multiple uniforms share the same name, all will be removed.
     void removeUniform(const std::string& name) {
-    for (auto it = m_uniforms.begin(); it != m_uniforms.end(); ) {
-        if (*it && (*it)->getName() == name) {
-            it = m_uniforms.erase(it); // erase retorna o iterador para o próximo elemento válido
-        } else {
-            ++it;
+        for (auto it = m_uniforms.begin(); it != m_uniforms.end(); ) {
+            if (*it && (*it)->getName() == name) {
+                it = m_uniforms.erase(it); // erase retorna o iterador para o próximo elemento válido
+            } else {
+                ++it;
+            }
         }
     }
-}
 
     virtual void apply() override {
+        // Use top() to ensure shader is active before setting uniforms
+        auto shader = shader::stack()->top();
+        if (!shader) return;
 
+        GLuint programID = shader->GetShaderID();
         for (auto& u : m_uniforms) {
+            u->findLocation(programID);
             u->apply();
         }
     }

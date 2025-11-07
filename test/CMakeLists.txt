@@ -13,6 +13,7 @@ add_executable(EnGeneTest main.cpp)
 add_executable(SimpleTest simple_test.cpp)
 add_executable(SpecularGlossTest specular_gloss_test.cpp)
 add_executable(SkyboxTest skybox_test.cpp)
+add_executable(ClipPlaneFogTest clip_plane_fog_test.cpp)
 
 # Function to configure a test target
 function(configure_test_target target_name)
@@ -79,3 +80,4 @@ configure_test_target(EnGeneTest)
 configure_test_target(SimpleTest)
 configure_test_target(SpecularGlossTest)
 configure_test_target(SkyboxTest)
+configure_test_target(ClipPlaneFogTest)

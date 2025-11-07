@@ -22,6 +22,7 @@ namespace detail {
     // Specializations for supported types
     template<> struct GLTypeFor<float>     { static const GLenum value = GL_FLOAT; };
     template<> struct GLTypeFor<int>       { static const GLenum value = GL_INT; };
+    template<> struct GLTypeFor<bool>      { static const GLenum value = GL_BOOL; };
     template<> struct GLTypeFor<glm::vec2> { static const GLenum value = GL_FLOAT_VEC2; };
     template<> struct GLTypeFor<glm::vec3> { static const GLenum value = GL_FLOAT_VEC3; };
     template<> struct GLTypeFor<glm::vec4> { static const GLenum value = GL_FLOAT_VEC4; };
@@ -123,6 +124,14 @@ template<>
 inline void Uniform<int>::apply() const {
     if (isValid()) {
         glUniform1i(m_location, value_provider());
+    }
+}
+
+template<>
+inline void Uniform<bool>::apply() const {
+    if (isValid()) {
+        // In GLSL, booleans are represented as integers (0 = false, non-zero = true)
+        glUniform1i(m_location, value_provider() ? 1 : 0);
     }
 }
 

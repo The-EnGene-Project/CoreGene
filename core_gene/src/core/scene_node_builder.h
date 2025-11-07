@@ -89,6 +89,22 @@ public:
     }
     
     /**
+     * @brief Adds a component directly to the node's payload.
+     * Useful when you already have a component instance.
+     * 
+     * @tparam T The component type.
+     * @param component The component to add.
+     * @return A reference to the current builder for chaining.
+     */
+    template<typename T>
+    SceneNodeBuilder& addComponent(std::shared_ptr<T> component) {
+        if (node_ && component) {
+            node_->payload().addComponent(component, node_);
+        }
+        return *this;
+    }
+
+    /**
      * @brief Implicit conversion to a reference to the underlying Node.
      * Allows assigning the result of a build chain to a `node::Node&`.
      */

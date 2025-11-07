@@ -70,7 +70,6 @@ public:
     virtual void apply() override {
 
         for (auto& u : m_uniforms) {
-            u->findLocation(programID);
             u->apply();
         }
     }

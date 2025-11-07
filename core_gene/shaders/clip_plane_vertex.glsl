@@ -1,24 +1,27 @@
 #version 410 core
 
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aNormal;
-layout(location = 2) in vec2 aTexCoord;
-layout(location = 3) in vec3 aTangent;
+layout (location = 0) in vec3 a_pos;
+layout (location = 1) in vec3 a_normal;
+layout (location = 2) in vec3 a_tangent;
+layout (location = 3) in vec2 a_texCoord;
 
 out vec3 v_fragPos;
 out vec3 v_normal;
 out vec3 v_tangent;
 out vec2 v_texCoord;
 
-// === Matrizes padrão ===
-uniform mat4 u_model;
-uniform mat4 u_view;
-uniform mat4 u_projection;
+// === blocos uniformes ===
+layout (std140) uniform CameraMatrices {
+    mat4 view;
+    mat4 projection;
+};
 
 // === Multi Clip Planes ===
 #define MAX_CLIP_PLANES 6
 uniform vec4 clip_planes[MAX_CLIP_PLANES];
 uniform int num_clip_planes;
+
+uniform mat4 u_model;
 
 void main()
 {
@@ -38,4 +41,5 @@ void main()
     }
 
     gl_Position = u_projection * u_view * worldPos;
+
 }

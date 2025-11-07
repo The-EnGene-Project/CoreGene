@@ -139,6 +139,6 @@ void main()
 
         totalLight += (ambient + diffuse + specular) * attenuation;
     }
-
+    totalLight = clamp(totalLight, 0.0, 1.0);
     FragColor = vec4(totalLight, 1.0);
 }

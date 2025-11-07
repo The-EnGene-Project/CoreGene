@@ -103,8 +103,8 @@ int main() {
             auto specularShader = shader::Shader::Make(vs_source, fs_source);
             
             specularShader->configureDynamicUniform<glm::mat4>("u_model", transform::current);
-            specularShader->configureDynamicUniform<uniform::detail::Sampler2D>("u_specularMap", texture::getSamplerProvider("u_specularMap"));
-            specularShader->configureDynamicUniform<uniform::detail::Sampler2D>("u_glossMap", texture::getSamplerProvider("u_glossMap"));
+            specularShader->configureDynamicUniform<uniform::detail::Sampler>("u_specularMap", texture::getSamplerProvider("u_specularMap"));
+            specularShader->configureDynamicUniform<uniform::detail::Sampler>("u_glossMap", texture::getSamplerProvider("u_glossMap"));
 
             // Create textures programmatically
             unsigned char whitePixel[] = { 255, 255, 255, 255 };

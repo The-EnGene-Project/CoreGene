@@ -22,6 +22,7 @@ namespace detail {
     // Specializations for supported types
     template<> struct GLTypeFor<float>     { static const GLenum value = GL_FLOAT; };
     template<> struct GLTypeFor<int>       { static const GLenum value = GL_INT; };
+    template<> struct GLTypeFor<bool>      { static const GLenum value = GL_BOOL; };
     template<> struct GLTypeFor<glm::vec2> { static const GLenum value = GL_FLOAT_VEC2; };
     template<> struct GLTypeFor<glm::vec3> { static const GLenum value = GL_FLOAT_VEC3; };
     template<> struct GLTypeFor<glm::vec4> { static const GLenum value = GL_FLOAT_VEC4; };
@@ -29,9 +30,15 @@ namespace detail {
     template<> struct GLTypeFor<glm::mat4> { static const GLenum value = GL_FLOAT_MAT4; };
     
     // Sampler types (represented as int in C++ for texture unit binding)
-    // Note: We use a custom struct to distinguish sampler2D from regular int
-    struct Sampler2D { int unit; };
-    template<> struct GLTypeFor<Sampler2D> { static const GLenum value = GL_SAMPLER_2D; };
+    // Note: We use custom structs to distinguish samplers from regular int
+    
+    // Generic sampler type that works for all sampler types (sampler2D, samplerCube, etc.)
+    // The shader will determine the actual sampler type based on the GLSL uniform declaration
+    struct Sampler { int unit; };
+    
+    // Note: Sampler uses GL_SAMPLER_2D as a placeholder, but works for all sampler types
+    // The actual type checking is done by comparing GLSL type with C++ configuration
+    template<> struct GLTypeFor<Sampler> { static const GLenum value = GL_SAMPLER_2D; };
 }
 
 // Forward declaration
@@ -121,6 +128,14 @@ inline void Uniform<int>::apply() const {
 }
 
 template<>
+inline void Uniform<bool>::apply() const {
+    if (isValid()) {
+        // In GLSL, booleans are represented as integers (0 = false, non-zero = true)
+        glUniform1i(m_location, value_provider() ? 1 : 0);
+    }
+}
+
+template<>
 inline void Uniform<glm::vec2>::apply() const {
     if (isValid()) {
         glUniform2fv(m_location, 1, glm::value_ptr(value_provider()));
@@ -156,7 +171,7 @@ inline void Uniform<glm::mat4>::apply() const {
 }
 
 template<>
-inline void Uniform<detail::Sampler2D>::apply() const {
+inline void Uniform<detail::Sampler>::apply() const {
     if (isValid()) {
         glUniform1i(m_location, value_provider().unit);
     }

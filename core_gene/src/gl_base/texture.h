@@ -23,6 +23,18 @@
 
 namespace texture {
 
+// Base interface for all texture types
+class ITexture {
+public:
+    virtual ~ITexture() = default;
+    virtual void Bind(GLuint unit = 0) const = 0;
+    virtual void Unbind(GLuint unit = 0) const = 0;
+    virtual GLuint GetTextureID() const = 0;
+    virtual GLenum GetTextureTarget() const = 0;
+};
+
+using ITexturePtr = std::shared_ptr<ITexture>;
+
 class Texture;
 using TexturePtr = std::shared_ptr<Texture>;
 
@@ -54,19 +66,39 @@ static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int
         return;
     }
 
-    // Determine format based on number of channels
-    GLenum format = GL_RGB;
+    GLenum internalFormat = GL_RGB8; // How the GPU stores it
+    GLenum dataFormat = GL_RGB;      // The format of the source 'data'
+
+    std::cout << "Loaded texture file: " << filename << std::endl;
+    std::cout << "  - Width: " << width << ", Channels: " << channels << std::endl;
+    std::cout << "  - Bytes per row: " << (width * channels) << std::endl;
+
     if (channels == 4) {
-        format = GL_RGBA;
+        internalFormat = GL_RGBA8;
+        dataFormat = GL_RGBA;
     } else if (channels == 3) {
-        format = GL_RGB;
+        internalFormat = GL_RGB8;
+        dataFormat = GL_RGB;
     } else if (channels == 1) {
-        format = GL_RED;
+        // Store as 3-channel RGB, but the source is 1-channel
+        // This makes OpenGL convert (R) -> (R, R, R) for a grayscale image
+        internalFormat = GL_RGB8;
+        dataFormat = GL_RED;
     }
 
+    // Tell OpenGL data is tightly packed
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    GL_CHECK("set 1-byte pixel alignment");
+
     // Upload texture data to the GPU
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
     GL_CHECK("upload texture data");
+    
+    // Restore default alignment
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    GL_CHECK("restore 4-byte pixel alignment");
+
+    // Generate mipmaps AFTER uploading data
     glGenerateMipmap(GL_TEXTURE_2D);
     GL_CHECK("generate mipmaps");
 
@@ -76,7 +108,7 @@ static void LoadAndConfigureTexture(GLuint tid, const std::string& filename, int
 }
 
 
-class Texture {
+class Texture : public ITexture {
 private:
     GLuint m_tid;
     int m_width;
@@ -144,17 +176,23 @@ public:
     ~Texture() {
         glDeleteTextures(1, &m_tid);
     }
-    void Bind(GLuint unit = 0) const {
+    
+    // ITexture interface implementation
+    void Bind(GLuint unit = 0) const override {
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_2D, m_tid);
     }
-    void Unbind(GLuint unit = 0) const {
+    void Unbind(GLuint unit = 0) const override {
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    GLuint GetTextureID() const {
+    GLuint GetTextureID() const override {
         return m_tid;
+    }
+    
+    GLenum GetTextureTarget() const override {
+        return GL_TEXTURE_2D;
     }
 
     int GetWidth() const {
@@ -173,12 +211,12 @@ private:
     // This is the core of the state machine.
     // It's a stack of maps. Each map represents the complete texture state
     // (all active units) at that point in the scene graph.
-    std::vector<std::unordered_map<GLuint, TexturePtr>> m_stack;
+    std::vector<std::unordered_map<GLuint, ITexturePtr>> m_stack;
     // This map links a sampler uniform name to a texture unit.
     std::unordered_map<std::string, GLuint> m_sampler_to_unit_map;
 
     // This map tracks the ACTUAL state on the GPU to prevent redundant calls.
-    std::unordered_map<GLuint, TexturePtr> m_active_gpu_state;
+    std::unordered_map<GLuint, ITexturePtr> m_active_gpu_state;
 
     TextureStack() {
         // Start with a base level on the stack representing the default (empty) state.
@@ -190,7 +228,7 @@ public:
     TextureStack(const TextureStack&) = delete;
     TextureStack& operator=(const TextureStack&) = delete;
 
-    TexturePtr top() {
+    ITexturePtr top() {
         if (m_stack.empty()) {
             return nullptr;
         }
@@ -202,7 +240,7 @@ public:
     }
 
     // The intelligent push operation.
-    void push(TexturePtr texture, GLuint unit = 0) {
+    void push(ITexturePtr texture, GLuint unit = 0) {
         // 1. Get the state from the previous level of the stack.
         auto new_state = m_stack.back();
         // 2. Modify it with the new texture.
@@ -291,26 +329,28 @@ inline std::function<int()> getUnitProvider(const std::string& samplerName) {
 
 } // namespace texture
 
-// Forward declare Sampler2D for the overload
-namespace uniform { namespace detail { struct Sampler2D; } }
-
 namespace texture {
 
 /**
- * @brief Returns a provider function for sampler2D uniforms.
+ * @brief Returns a provider function for sampler uniforms (works for all sampler types).
  * 
- * This is the type-safe version that returns uniform::detail::Sampler2D
- * instead of int. Use this when configuring sampler2D uniforms.
+ * This is the type-safe version that returns uniform::detail::Sampler
+ * which works for sampler2D, samplerCube, and other sampler types.
  * 
  * Example:
  * @code
- * shader->configureDynamicUniform<uniform::detail::Sampler2D>("u_texture", 
+ * // For sampler2D:
+ * shader->configureDynamicUniform<uniform::detail::Sampler>("u_texture", 
  *     texture::getSamplerProvider("u_texture"));
+ * 
+ * // For samplerCube:
+ * shader->configureDynamicUniform<uniform::detail::Sampler>("u_cubemap", 
+ *     texture::getSamplerProvider("u_cubemap"));
  * @endcode
  */
-inline std::function<uniform::detail::Sampler2D()> getSamplerProvider(const std::string& samplerName) {
-    return [samplerName]() -> uniform::detail::Sampler2D {
-        return uniform::detail::Sampler2D{static_cast<int>(texture::stack()->getUnitForSampler(samplerName))};
+inline std::function<uniform::detail::Sampler()> getSamplerProvider(const std::string& samplerName) {
+    return [samplerName]() -> uniform::detail::Sampler {
+        return uniform::detail::Sampler{static_cast<int>(texture::stack()->getUnitForSampler(samplerName))};
     };
 }
 

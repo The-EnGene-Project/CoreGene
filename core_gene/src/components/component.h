@@ -55,6 +55,10 @@ public:
     void setOwner(scene::SceneNodePtr owner) {
         m_owner = owner;
     }
+
+    scene::SceneNodePtr getOwner() {
+        return m_owner;
+    }
     
     // Static version for ComponentCollection messages
     static const char* getTypeNameStatic() { return "Component"; }

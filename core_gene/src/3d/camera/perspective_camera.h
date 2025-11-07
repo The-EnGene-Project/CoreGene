@@ -32,12 +32,9 @@ private:
     mutable bool m_is_view_matrix_dirty;
 
 protected:
-    explicit PerspectiveCamera(
-        GLuint matrices_binding_point, GLuint position_binding_point,
-        float fov_degrees, float near_plane, float far_plane) 
+    explicit PerspectiveCamera(float fov_degrees, float near_plane, float far_plane) 
         :
-        // Pass binding points up to the parent constructors to automate resource creation.
-        Camera3D(matrices_binding_point, position_binding_point),
+        Camera3D(),
         m_fov_degrees(fov_degrees),
         m_near_plane(near_plane),
         m_far_plane(far_plane),
@@ -52,33 +49,15 @@ protected:
 public:
     /**
      * @brief Static factory method for creating a PerspectiveCamera.
-     * @param matrices_binding_point The binding point for the CameraMatrices UBO.
-     * @param position_binding_point The binding point for the CameraPosition UBO.
-     */
-    static PerspectiveCameraPtr Make(
-        GLuint matrices_binding_point, GLuint position_binding_point,
-        float fov_degrees = 45.0f, float near_plane = 0.1f, float far_plane = 100.0f) 
-    {
-        return PerspectiveCameraPtr(
-            new PerspectiveCamera(matrices_binding_point, position_binding_point, fov_degrees, near_plane, far_plane)
-        );
-    }
-
-    
-    /**
-     * @brief Static factory method using default binding points.
+     * @param fov_degrees Field of view in degrees.
+     * @param near_plane Distance to near clipping plane.
+     * @param far_plane Distance to far clipping plane.
      */
     static PerspectiveCameraPtr Make(
         float fov_degrees = 80.0f, float near_plane = 0.1f, float far_plane = 100.0f) 
     {
         return PerspectiveCameraPtr(
-            new PerspectiveCamera(
-                0,
-                1, // Default binding points
-                fov_degrees, 
-                near_plane, 
-                far_plane
-            )
+            new PerspectiveCamera(fov_degrees, near_plane, far_plane)
         );
     }
 

@@ -142,7 +142,7 @@ inline float calculateZoomRadius(double scroll_delta, float current_radius, floa
  * The controller translates mouse input into camera transformations using spherical coordinate
  * mathematics to provide smooth orbiting, zooming, and panning operations around a target point.
  */
-class ArcBallController {
+class ArcBallController : public std::enable_shared_from_this<ArcBallController> {
 public:
     // --- Constructor and Destructor ---
     
@@ -187,6 +187,28 @@ public:
      */
     static std::shared_ptr<ArcBallController> CreateFromCamera() {
         return std::shared_ptr<ArcBallController>(new ArcBallController(true));
+    }
+    
+    /**
+     * @brief Static factory method to create an ArcBall controller from a specific camera node.
+     * @param camera_node_name Name of the scene node containing the camera
+     * @return Shared pointer to a new ArcBallController initialized from the specified camera
+     */
+    static std::shared_ptr<ArcBallController> CreateFromCameraNode(const std::string& camera_node_name) {
+        auto controller = std::make_shared<ArcBallController>(false);
+        controller->initializeFromCameraNode(camera_node_name);
+        return controller;
+    }
+    
+    /**
+     * @brief Static factory method to create an ArcBall controller from a specific camera node.
+     * @param camera_node Shared pointer to the scene node containing the camera
+     * @return Shared pointer to a new ArcBallController initialized from the specified camera
+     */
+    static std::shared_ptr<ArcBallController> CreateFromCameraNode(scene::SceneNodePtr camera_node) {
+        auto controller = std::make_shared<ArcBallController>(false);
+        controller->initializeFromCameraNode(camera_node);
+        return controller;
     }
 
     // --- Configuration Methods ---
@@ -408,6 +430,72 @@ public:
         return m_radius;
     }
     
+    // --- Input Handler Integration ---
+    
+    /**
+     * @brief Attaches arcball input handling to an input handler.
+     * This registers the arcball callbacks with the target handler, allowing
+     * the arcball to work through that handler's input system.
+     * @param target_handler Reference to the input handler to attach to
+     */
+    void attachTo(input::InputHandler& target_handler) {
+        // Create a shared pointer from 'this' for the callbacks
+        // Note: This assumes the controller is managed by a shared_ptr
+        auto self = shared_from_this();
+        
+        // Register arcball callbacks with the target handler
+        target_handler.registerCallback<input::InputType::MOUSE_BUTTON>(
+            [self](GLFWwindow* window, int button, int action, int mods) {
+                if (!self) return;
+                
+                double mouse_x, mouse_y;
+                glfwGetCursorPos(window, &mouse_x, &mouse_y);
+                
+                if (button == GLFW_MOUSE_BUTTON_LEFT) {
+                    if (action == GLFW_PRESS) {
+                        self->startOrbit(mouse_x, mouse_y);
+                    } else if (action == GLFW_RELEASE) {
+                        self->endOrbit();
+                    }
+                } else if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+                    if (action == GLFW_PRESS) {
+                        self->startPan(mouse_x, mouse_y);
+                    } else if (action == GLFW_RELEASE) {
+                        self->endPan();
+                    }
+                }
+            });
+        
+        target_handler.registerCallback<input::InputType::CURSOR_POSITION>(
+            [self](GLFWwindow* window, double xpos, double ypos) {
+                if (!self) return;
+                self->updateOrbit(xpos, ypos);
+                self->updatePan(xpos, ypos);
+            });
+        
+        target_handler.registerCallback<input::InputType::SCROLL>(
+            [self](GLFWwindow* window, double xoffset, double yoffset) {
+                if (!self) return;
+                self->zoom(yoffset);
+            });
+    }
+    
+    /**
+     * @brief Detaches arcball input handling from an input handler.
+     * This clears the arcball callbacks from the target handler by registering
+     * null callbacks, effectively disabling arcball input.
+     * @param target_handler Reference to the input handler to detach from
+     */
+    void detachFrom(input::InputHandler& target_handler) {
+        // Register null callbacks to clear arcball handling
+        target_handler.registerCallback<input::InputType::MOUSE_BUTTON>(
+            input::InputHandler::MouseButtonCallback{});
+        target_handler.registerCallback<input::InputType::CURSOR_POSITION>(
+            input::InputHandler::CursorPosCallback{});
+        target_handler.registerCallback<input::InputType::SCROLL>(
+            input::InputHandler::ScrollCallback{});
+    }
+    
     /**
      * @brief Initializes ArcBall state from the current camera position.
      * Calculates initial spherical coordinates from the camera's transform
@@ -420,6 +508,60 @@ public:
         auto camera = scene::graph()->getActiveCamera();
         if (!camera) {
             std::cerr << "ArcBall: No active camera available for initialization" << std::endl;
+            return;
+        }
+        
+        // Get camera's current world position
+        glm::vec3 camera_position = camera->getWorldTransform()[3];
+        
+        // First, check if the camera has a target set and use it as the arcball center
+        auto camera_target = camera->getTarget();
+        if (camera_target) {
+            setTarget(camera_target);
+        } else if (m_target == glm::vec3(0.0f) && !m_target_component) {
+            // If no camera target and no arcball target is set, calculate a reasonable target based on camera orientation
+            const glm::mat4& camera_world_transform = camera->getWorldTransform();
+            glm::vec3 forward = -glm::vec3(camera_world_transform[2]); // Camera looks down -Z
+            
+            // Set target at a reasonable distance in front of the camera
+            float default_target_distance = 5.0f;
+            m_target = camera_position + forward * default_target_distance;
+        }
+        
+        // Calculate spherical coordinates from current camera position relative to target
+        cartesianToSpherical(camera_position);
+        
+        // Ensure radius is within configured limits
+        m_radius = glm::clamp(m_radius, m_min_radius, m_max_radius);
+    }
+    
+    /**
+     * @brief Initializes ArcBall state from a specific camera node by name.
+     * @param camera_node_name Name of the scene node containing the camera
+     */
+    void initializeFromCameraNode(const std::string& camera_node_name) {
+        auto camera_node = scene::graph()->getNodeByName(camera_node_name);
+        if (!camera_node) {
+            std::cerr << "ArcBall: Camera node '" << camera_node_name << "' not found" << std::endl;
+            return;
+        }
+        initializeFromCameraNode(camera_node);
+    }
+    
+    /**
+     * @brief Initializes ArcBall state from a specific camera node.
+     * @param camera_node Shared pointer to the scene node containing the camera
+     */
+    void initializeFromCameraNode(scene::SceneNodePtr camera_node) {
+        if (!camera_node) {
+            std::cerr << "ArcBall: Null camera node provided" << std::endl;
+            return;
+        }
+        
+        // Get the camera component from the node
+        auto camera = camera_node->payload().get<component::Camera>();
+        if (!camera) {
+            std::cerr << "ArcBall: Node '" << camera_node->getName() << "' has no Camera component" << std::endl;
             return;
         }
         
@@ -578,6 +720,48 @@ private:
 };
 
 
+// --- Convenience Static Functions ---
+
+/**
+ * @brief Convenience function to quickly attach arcball controls to an existing input handler.
+ * Creates an arcball controller from the current camera and attaches it to the target handler.
+ * @param target_handler Reference to the input handler to attach arcball controls to
+ * @return Shared pointer to the created ArcBallController for further configuration
+ */
+inline std::shared_ptr<ArcBallController> attachArcballTo(input::InputHandler& target_handler) {
+    auto controller = ArcBallController::CreateFromCamera();
+    controller->attachTo(target_handler);
+    return controller;
+}
+
+/**
+ * @brief Convenience function to quickly attach arcball controls with a custom controller.
+ * @param target_handler Reference to the input handler to attach arcball controls to
+ * @param controller Shared pointer to the ArcBall controller to use
+ * @return The same controller pointer for chaining
+ */
+inline std::shared_ptr<ArcBallController> attachArcballTo(input::InputHandler& target_handler, 
+                                                           std::shared_ptr<ArcBallController> controller) {
+    if (controller) {
+        controller->attachTo(target_handler);
+    }
+    return controller;
+}
+
+/**
+ * @brief Convenience function to quickly detach arcball controls from an input handler.
+ * This clears all arcball-related callbacks from the target handler.
+ * @param target_handler Reference to the input handler to detach arcball controls from
+ */
+inline void detachArcballFrom(input::InputHandler& target_handler) {
+    // Register null callbacks to clear arcball handling
+    target_handler.registerCallback<input::InputType::MOUSE_BUTTON>(
+        input::InputHandler::MouseButtonCallback{});
+    target_handler.registerCallback<input::InputType::CURSOR_POSITION>(
+        input::InputHandler::CursorPosCallback{});
+    target_handler.registerCallback<input::InputType::SCROLL>(
+        input::InputHandler::ScrollCallback{});
+}
 
 } // namespace arcball
 

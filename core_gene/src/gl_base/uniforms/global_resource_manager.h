@@ -51,22 +51,32 @@ public:
         const std::string& name = resource->getName();
         GLuint binding_point = resource->getBindingPoint();
         
+        // Check if this is a re-registration of an existing resource
+        auto it = m_known_resources.find(name);
+        bool is_reregistration = (it != m_known_resources.end());
+        
         // Check if the binding point is already in use by a different resource
         for (const auto& [existing_name, existing_resource] : m_known_resources) {
             if (existing_resource->getBindingPoint() == binding_point && existing_name != name) {
-                std::cerr << "Warning: Binding point " << binding_point 
+                std::cerr << "WARNING [GlobalResourceManager]: Binding point " << binding_point 
                           << " is already in use by resource '" << existing_name 
                           << "'. Registering new resource '" << name 
-                          << "' with the same binding point will cause conflicts." << std::endl;
+                          << "' with the same binding point will cause conflicts!" << std::endl;
                 break;
             }
         }
-        
-        auto it = m_known_resources.find(name);
 
-        if (it != m_known_resources.end()) {
+        if (is_reregistration) {
             // A resource with this name already exists. Clean it up before overwriting.
             ShaderResourcePtr oldResource = it->second;
+            
+            // Only warn if it's not just updating the provider (same binding point)
+            if (oldResource->getBindingPoint() != binding_point) {
+                std::cerr << "WARNING [GlobalResourceManager]: Re-registering resource '" << name 
+                          << "' with different binding point (was " << oldResource->getBindingPoint() 
+                          << ", now " << binding_point << ")." << std::endl;
+            }
+            
             if (oldResource->getUpdateMode() == UpdateMode::PER_FRAME) {
                 // Remove the old resource from the per-frame update list.
                 m_per_frame_resources.erase(

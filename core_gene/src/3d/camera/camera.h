@@ -31,34 +31,43 @@ struct CameraMatrices {
  * @brief Abstract base class for all camera components.
  *
  * This class provides the core camera interface and functionality, including
- * aspect ratio management and the automatic creation and configuration of a
- * UBO for view and projection matrices.
+ * aspect ratio management and a static global UBO for camera matrices.
  */
 class Camera : public ObservedTransformComponent {
+private:
+    // Static global UBO shared by all cameras
+    static uniform::UBOPtr<CameraMatrices> s_matrices_ubo;
+    static bool s_ubo_initialized;
+
 protected:
     float m_aspect_ratio;
-    uniform::UBOPtr<CameraMatrices> m_matrices_resource;
 
     /**
-     * @brief Protected constructor that automatically creates and configures the matrices resource.
-     * @param matrices_binding_point The binding point for the CameraMatrices UBO.
+     * @brief Protected constructor for camera components.
      * @param priority The update priority for the camera's transform.
      */
-    explicit Camera(GLuint matrices_binding_point, unsigned int priority =  static_cast<unsigned int>(ComponentPriority::CAMERA))
+    explicit Camera(unsigned int priority = static_cast<unsigned int>(ComponentPriority::CAMERA))
         : ObservedTransformComponent(transform::Transform::Make(), priority, 
             static_cast<unsigned int>(ComponentPriority::CAMERA), 
             static_cast<unsigned int>(ComponentPriority::GEOMETRY)),
           m_aspect_ratio(16.0f / 9.0f) // Default aspect ratio
     {
-        // Automatically create and store the UBO resource.
-        m_matrices_resource = uniform::UBO<CameraMatrices>::Make(
-            "CameraMatrices", 
-            uniform::UpdateMode::PER_FRAME, 
-            matrices_binding_point
-        );
+        // Ensure the static UBO is initialized
+        initializeStaticUBO();
+    }
 
-        // Immediately configure the resource with its data provider.
-        m_matrices_resource->setProvider(this->getMatricesProvider());
+    /**
+     * @brief Initializes the static UBO if not already initialized.
+     */
+    static void initializeStaticUBO() {
+        if (!s_ubo_initialized) {
+            s_matrices_ubo = uniform::UBO<CameraMatrices>::Make(
+                "CameraMatrices",
+                uniform::UpdateMode::PER_FRAME,
+                0 // Binding point 0
+            );
+            s_ubo_initialized = true;
+        }
     }
 
 public:
@@ -70,40 +79,50 @@ public:
     virtual float getAspectRatio() const { return m_aspect_ratio; }
     
     /**
-     * @brief Returns a function that provides the camera's matrices.
-     * This is used by the UBO to get its data each frame.
+     * @brief Returns a function that provides this camera's matrices.
+     * This is used by the scene graph to update the static UBO when this camera becomes active.
      * @return A std::function that returns a CameraMatrices struct.
      */
     virtual std::function<CameraMatrices()> getMatricesProvider() {
         return [this]() -> CameraMatrices {
-            glm::mat4 view = this->getViewMatrix();
-            glm::mat4 projection = this->getProjectionMatrix();
             CameraMatrices matrices;
-            matrices.view = view;
-            matrices.projection = projection;
+            matrices.view = this->getViewMatrix();
+            matrices.projection = this->getProjectionMatrix();
             return matrices;
         };
     }
 
-    // --- NEW: Shader Binding Utilities ---
+    /**
+     * @brief Updates the static UBO to use this camera's provider.
+     * Called by the scene graph when this camera becomes active.
+     */
+    void activateAsGlobalCamera() {
+        initializeStaticUBO();
+        if (s_matrices_ubo) {
+            s_matrices_ubo->setProvider(getMatricesProvider());
+        }
+    }
+
+    // --- Shader Binding Utilities ---
 
     /**
-     * @brief Binds the camera's UBO resource block to a specific shader.
+     * @brief Binds the global CameraMatrices UBO to a specific shader.
      * @param shader The shader to bind to.
      */
-    virtual void bindToShader(shader::ShaderPtr shader) const {
+    static void bindToShader(shader::ShaderPtr shader) {
+        initializeStaticUBO();
         if (shader) {
             shader->addResourceBlockToBind("CameraMatrices");
         }
     }
 
     /**
-     * @brief Binds the camera's UBO resource block to a collection of shaders.
+     * @brief Binds the global CameraMatrices UBO to a collection of shaders.
      * @param shaders A vector of shaders to bind to.
      */
-    virtual void bindToShaders(const std::vector<shader::ShaderPtr>& shaders) const {
+    static void bindToShaders(const std::vector<shader::ShaderPtr>& shaders) {
         for (const auto& shader : shaders) {
-            this->bindToShader(shader);
+            Camera::bindToShader(shader);
         }
     }
 
@@ -137,6 +156,11 @@ public:
     const char* getTypeName() const override { return "Camera"; }
     static const char* getTypeNameStatic() { return "Camera"; }
 };
+
+// --- Static Member Definitions ---
+// Note: Header-only library, so we use inline to avoid ODR violations
+inline uniform::UBOPtr<CameraMatrices> Camera::s_matrices_ubo = nullptr;
+inline bool Camera::s_ubo_initialized = false;
 
 } // namespace component
 

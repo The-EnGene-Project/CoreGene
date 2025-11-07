@@ -28,35 +28,42 @@ struct CameraPosition {
  * position resource, which is useful for lighting calculations.
  */
 class Camera3D : public Camera {
-protected:
-    uniform::UBOPtr<CameraPosition> m_position_resource;
+private:
+    // Static global UBO for camera position shared by all 3D cameras
+    static uniform::UBOPtr<CameraPosition> s_position_ubo;
+    static bool s_position_ubo_initialized;
 
+protected:
     /**
-     * @brief Protected constructor that chains to the base and adds the position resource.
-     * @param matrices_binding_point The binding point for the CameraMatrices UBO.
-     * @param position_binding_point The binding point for the CameraPosition UBO.
+     * @brief Protected constructor that chains to the base.
      * @param priority The update priority for the camera's transform.
      */
-    explicit Camera3D(GLuint matrices_binding_point, GLuint position_binding_point, 
-                        unsigned int priority = static_cast<unsigned int>(ComponentPriority::CAMERA))
-        : Camera(matrices_binding_point, priority)
+    explicit Camera3D(unsigned int priority = static_cast<unsigned int>(ComponentPriority::CAMERA))
+        : Camera(priority)
     {
-        // Automatically create and store the ON_DEMAND position resource.
-        m_position_resource = uniform::UBO<CameraPosition>::Make(
-            "CameraPosition",
-            uniform::UpdateMode::PER_FRAME,
-            position_binding_point
-        );
+        // Ensure the static position UBO is initialized
+        initializeStaticPositionUBO();
+    }
 
-        // Immediately configure it with its data provider.
-        m_position_resource->setProvider(this->getPositionProvider());
+    /**
+     * @brief Initializes the static position UBO if not already initialized.
+     */
+    static void initializeStaticPositionUBO() {
+        if (!s_position_ubo_initialized) {
+            s_position_ubo = uniform::UBO<CameraPosition>::Make(
+                "CameraPosition",
+                uniform::UpdateMode::PER_FRAME,
+                1 // Binding point 1
+            );
+            s_position_ubo_initialized = true;
+        }
     }
 
 public:
     virtual ~Camera3D() = default;
 
     /**
-     * @brief Returns a function that provides the camera's world position.
+     * @brief Returns a function that provides this camera's world position.
      * @return A std::function that returns a CameraPosition struct.
      */
     virtual std::function<CameraPosition()> getPositionProvider() {
@@ -67,15 +74,29 @@ public:
         };
     }
 
-    // --- NEW: Overridden Shader Binding Utilities ---
+    /**
+     * @brief Updates the static position UBO to use this camera's provider.
+     * Called when this camera becomes active.
+     */
+    void activateAsGlobalCamera3D() {
+        initializeStaticPositionUBO();
+        if (s_position_ubo) {
+            s_position_ubo->setProvider(getPositionProvider());
+        }
+        // Also activate the base camera matrices
+        Camera::activateAsGlobalCamera();
+    }
+
+    // --- Shader Binding Utilities ---
     
     /**
      * @brief Binds both camera UBOs (matrices and position) to a specific shader.
      * @param shader The shader to bind to.
      */
-    virtual void bindToShader(shader::ShaderPtr shader) const override {
+    static void bindToShader(shader::ShaderPtr shader) {
+        initializeStaticPositionUBO();
+        Camera::bindToShader(shader); // Bind matrices UBO
         if (shader) {
-            Camera::bindToShader(shader); // Call base class implementation
             shader->addResourceBlockToBind("CameraPosition");
         }
     }
@@ -84,12 +105,11 @@ public:
      * @brief Binds both camera UBOs to a collection of shaders.
      * @param shaders A vector of shaders to bind to.
      */
-    void bindToShaders(const std::vector<shader::ShaderPtr>& shaders) const {
+    static void bindToShaders(const std::vector<shader::ShaderPtr>& shaders) {
         for (const auto& shader : shaders) {
-            this->bindToShader(shader);
+            Camera3D::bindToShader(shader);
         }
     }
-
 
     // --- New Pure Virtual for Concrete 3D Cameras ---
     
@@ -99,6 +119,10 @@ public:
      */
     virtual glm::vec3 getWorldPosition() = 0;
 };
+
+// --- Static Member Definitions ---
+inline uniform::UBOPtr<CameraPosition> Camera3D::s_position_ubo = nullptr;
+inline bool Camera3D::s_position_ubo_initialized = false;
 
 } // namespace component
 

@@ -6,3 +6,4 @@
 /**/*.zip
 /**/libs/* 
 !.gitkeep
+.temp/*

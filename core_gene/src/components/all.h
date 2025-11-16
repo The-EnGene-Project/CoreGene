@@ -11,3 +11,4 @@
 #include "skybox_component.h"
 #include "clip_plane_component.h"
 #include "variable_component.h"
+#include "framebuffer_component.h"

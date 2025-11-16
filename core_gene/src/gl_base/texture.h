@@ -21,6 +21,11 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
+// Forward declaration for friend class
+namespace framebuffer {
+    class Framebuffer;
+}
+
 namespace texture {
 
 // Base interface for all texture types
@@ -115,7 +120,14 @@ private:
     int m_height;
     inline static std::unordered_map<std::string, TexturePtr> s_cache;
 
+    // Friend declaration for Framebuffer class to access protected constructor
+    friend class framebuffer::Framebuffer;
+
 protected:
+    // Constructor for FBO texture creation (used by Framebuffer)
+    Texture(GLuint tid, int width, int height)
+        : m_tid(tid), m_width(width), m_height(height) {}
+
     // Constructor acquires the OpenGL resource.
     Texture(const std::string& filename) : m_width(0), m_height(0) {
         glGenTextures(1, &m_tid);
@@ -201,6 +213,41 @@ public:
 
     int GetHeight() const {
         return m_height;
+    }
+
+    /**
+     * @brief Generate mipmaps for this texture.
+     * 
+     * This method generates mipmaps for the texture, which are pre-calculated,
+     * optimized sequences of images that accompany a main texture, intended to
+     * increase rendering speed and reduce aliasing artifacts.
+     */
+    void generateMipmaps() {
+        glBindTexture(GL_TEXTURE_2D, m_tid);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        GL_CHECK("generate mipmaps");
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    /**
+     * @brief Configure texture parameters after creation.
+     * 
+     * This method allows post-creation configuration of texture parameters,
+     * which is useful for FBO textures that need specific wrapping or filtering modes.
+     * 
+     * @param wrapS Wrapping mode for S coordinate (e.g., GL_CLAMP_TO_EDGE, GL_REPEAT)
+     * @param wrapT Wrapping mode for T coordinate (e.g., GL_CLAMP_TO_EDGE, GL_REPEAT)
+     * @param minFilter Minification filter (e.g., GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR)
+     * @param magFilter Magnification filter (e.g., GL_LINEAR, GL_NEAREST)
+     */
+    void setTextureParameters(GLenum wrapS, GLenum wrapT, GLenum minFilter, GLenum magFilter) {
+        glBindTexture(GL_TEXTURE_2D, m_tid);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+        GL_CHECK("set texture parameters");
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 };
 

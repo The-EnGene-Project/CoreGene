@@ -16,171 +16,10 @@
  * @file framebuffer.h
  * @brief Framebuffer Object (FBO) abstraction for off-screen rendering
  * 
- * This file provides a RAII-compliant abstraction for OpenGL Framebuffer Objects,
- * enabling advanced rendering techniques like post-processing, shadow mapping,
- * reflections, and deferred shading.
+ * Provides RAII-compliant abstraction for OpenGL Framebuffer Objects,
+ * enabling post-processing, shadow mapping, reflections, and deferred shading.
  * 
- * @section usage_examples Usage Examples
- * 
- * @subsection basic_render_to_texture Basic Render-to-Texture
- * @code
- * // Create FBO with color texture and depth renderbuffer
- * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
- * 
- * // Render scene to FBO
- * framebuffer::stack()->push(fbo);
- * glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
- * scene::graph()->draw();
- * framebuffer::stack()->pop();
- * 
- * // Use FBO texture in next pass
- * auto scene_texture = fbo->getTexture("scene_color");
- * texture::stack()->push(scene_texture, 0);
- * // ... render fullscreen quad with texture ...
- * texture::stack()->pop();
- * @endcode
- * 
- * @subsection post_processing Post-Processing Pipeline
- * @code
- * // Create post-processing FBO (no depth attachment)
- * auto post_fbo = framebuffer::Framebuffer::MakePostProcessing(800, 600, "post_color");
- * 
- * // Render scene to FBO
- * framebuffer::stack()->push(post_fbo);
- * glClear(GL_COLOR_BUFFER_BIT);
- * scene::graph()->draw();
- * framebuffer::stack()->pop();
- * 
- * // Apply post-processing effect
- * auto shader = shader::Make("post_process.vert", "blur.frag");
- * post_fbo->attachToShader(shader, {{"post_color", "u_scene_texture"}});
- * 
- * shader::stack()->push(shader);
- * texture::stack()->registerSamplerUnit("u_scene_texture", 0);
- * texture::stack()->push(post_fbo->getTexture("post_color"), 0);
- * // ... render fullscreen quad ...
- * texture::stack()->pop();
- * shader::stack()->pop();
- * @endcode
- * 
- * @subsection shadow_mapping Shadow Mapping
- * @code
- * // Create shadow map FBO (depth-only)
- * auto shadow_fbo = framebuffer::Framebuffer::MakeShadowMap(1024, 1024, "shadow_depth");
- * 
- * // Render from light's perspective
- * framebuffer::stack()->push(shadow_fbo);
- * glClear(GL_DEPTH_BUFFER_BIT);
- * // ... render scene with depth-only shader ...
- * framebuffer::stack()->pop();
- * 
- * // Use shadow map in main rendering pass
- * auto shadow_texture = shadow_fbo->getTexture("shadow_depth");
- * texture::stack()->push(shadow_texture, 1);  // Bind to texture unit 1
- * // ... render scene with shadow comparison ...
- * texture::stack()->pop();
- * @endcode
- * 
- * @subsection deferred_shading Deferred Shading (G-Buffer)
- * @code
- * // Create G-Buffer with multiple render targets
- * auto gbuffer = framebuffer::Framebuffer::MakeGBuffer(800, 600, {
- *     "g_position",
- *     "g_normal",
- *     "g_albedo",
- *     "g_specular"
- * });
- * 
- * // Geometry pass: render to G-Buffer
- * framebuffer::stack()->push(gbuffer);
- * glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
- * // ... render scene with MRT shader ...
- * framebuffer::stack()->pop();
- * 
- * // Lighting pass: read from G-Buffer
- * auto lighting_shader = shader::Make("lighting.vert", "lighting.frag");
- * gbuffer->attachToShader(lighting_shader, {
- *     {"g_position", "u_position"},
- *     {"g_normal", "u_normal"},
- *     {"g_albedo", "u_albedo"},
- *     {"g_specular", "u_specular"}
- * });
- * 
- * shader::stack()->push(lighting_shader);
- * texture::stack()->registerSamplerUnit("u_position", 0);
- * texture::stack()->registerSamplerUnit("u_normal", 1);
- * texture::stack()->registerSamplerUnit("u_albedo", 2);
- * texture::stack()->registerSamplerUnit("u_specular", 3);
- * texture::stack()->push(gbuffer->getTexture("g_position"), 0);
- * texture::stack()->push(gbuffer->getTexture("g_normal"), 1);
- * texture::stack()->push(gbuffer->getTexture("g_albedo"), 2);
- * texture::stack()->push(gbuffer->getTexture("g_specular"), 3);
- * // ... render fullscreen quad with lighting calculations ...
- * texture::stack()->pop();
- * texture::stack()->pop();
- * texture::stack()->pop();
- * texture::stack()->pop();
- * shader::stack()->pop();
- * @endcode
- * 
- * @subsection component_integration Scene Graph Integration
- * @code
- * // Create FBO and attach to scene node
- * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
- * 
- * scene::graph()->addNode("offscreen_render")
- *     .with<component::FramebufferComponent>(fbo)
- *     .with<component::ShaderComponent>(shader)
- *     .addNode("cube")
- *         .with<component::GeometryComponent>(cube_geometry);
- * 
- * // Framebuffer is automatically pushed/popped during scene traversal
- * scene::graph()->draw();
- * 
- * // Retrieve texture for use in another pass
- * auto fbo_comp = scene::graph()->getNode("offscreen_render")
- *                     ->getPayload().get<component::FramebufferComponent>();
- * auto texture = fbo_comp->getTexture("scene_color");
- * @endcode
- * 
- * @subsection custom_configuration Custom Configuration
- * @code
- * // Create FBO with custom attachment configuration
- * auto custom_fbo = framebuffer::Framebuffer::Make(800, 600, {
- *     // HDR color attachment
- *     framebuffer::Framebuffer::AttachmentSpec(
- *         framebuffer::attachment::Point::Color0,
- *         framebuffer::attachment::Format::RGBA16F,
- *         "hdr_color"),
- *     // Integer ID attachment for picking
- *     framebuffer::Framebuffer::AttachmentSpec(
- *         framebuffer::attachment::Point::Color1,
- *         framebuffer::attachment::Format::R32I,
- *         "object_id"),
- *     // High-precision depth texture
- *     framebuffer::Framebuffer::AttachmentSpec(
- *         framebuffer::attachment::Point::Depth,
- *         framebuffer::attachment::Format::DepthComponent32F,
- *         "depth_map")
- * });
- * @endcode
- * 
- * @subsection mipmap_generation Mipmap Generation
- * @code
- * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
- * 
- * // Render to FBO
- * framebuffer::stack()->push(fbo);
- * scene::graph()->draw();
- * framebuffer::stack()->pop();
- * 
- * // Generate mipmaps for downsampling effects
- * fbo->generateMipmaps("scene_color");
- * 
- * // Use texture with mipmaps
- * auto texture = fbo->getTexture("scene_color");
- * texture::stack()->push(texture, 0);
- * @endcode
+ * See README.md for detailed usage examples and integration patterns.
  */
 
 namespace framebuffer {
@@ -194,19 +33,13 @@ using FramebufferStackPtr = std::shared_ptr<FramebufferStack>;
 
 /**
  * @namespace framebuffer::attachment
- * @brief Contains enums for framebuffer attachment configuration
- * 
- * This namespace provides type-safe enums for specifying attachment points,
- * internal formats, and storage types, replacing raw OpenGL constants.
+ * @brief Type-safe enums for framebuffer attachment configuration
  */
 namespace attachment {
 
 /**
  * @enum Point
- * @brief Framebuffer attachment points
- * 
- * Specifies where an attachment connects to the framebuffer.
- * Supports up to 8 color attachments (MRT) plus depth/stencil.
+ * @brief Framebuffer attachment points (up to 8 color + depth/stencil)
  */
 enum class Point {
     Color0,        ///< First color attachment (GL_COLOR_ATTACHMENT0)
@@ -224,10 +57,7 @@ enum class Point {
 
 /**
  * @enum Format
- * @brief Internal formats for framebuffer attachments
- * 
- * Specifies how attachment data is stored in GPU memory.
- * Includes color formats (LDR/HDR), depth formats, and combined formats.
+ * @brief Internal formats for framebuffer attachments (color, depth, stencil)
  */
 enum class Format {
     // Color formats (LDR - Low Dynamic Range)
@@ -260,10 +90,7 @@ enum class Format {
 
 /**
  * @enum StorageType
- * @brief Storage type for framebuffer attachments
- * 
- * Specifies whether an attachment is a texture (readable by shaders)
- * or a renderbuffer (write-only, optimized for rendering).
+ * @brief Texture (readable) or Renderbuffer (write-only, optimized)
  */
 enum class StorageType {
     Texture,      ///< Texture attachment (can be read by shaders)
@@ -383,34 +210,159 @@ inline GLenum toGLTextureWrap(TextureWrap wrap) {
 } // namespace attachment
 
 /**
+ * @enum StencilFunc
+ * @brief Stencil test comparison functions
+ */
+enum class StencilFunc : GLenum {
+    Never = GL_NEVER,           ///< Test never passes
+    Less = GL_LESS,             ///< Test passes if (ref & mask) < (stencil & mask)
+    LEqual = GL_LEQUAL,         ///< Test passes if (ref & mask) <= (stencil & mask)
+    Greater = GL_GREATER,       ///< Test passes if (ref & mask) > (stencil & mask)
+    GEqual = GL_GEQUAL,         ///< Test passes if (ref & mask) >= (stencil & mask)
+    Equal = GL_EQUAL,           ///< Test passes if (ref & mask) == (stencil & mask)
+    NotEqual = GL_NOTEQUAL,     ///< Test passes if (ref & mask) != (stencil & mask)
+    Always = GL_ALWAYS          ///< Test always passes
+};
+
+/**
+ * @enum DepthFunc
+ * @brief Depth test comparison functions
+ */
+enum class DepthFunc : GLenum {
+    Never = GL_NEVER,           ///< Test never passes
+    Less = GL_LESS,             ///< Test passes if incoming < stored (default)
+    LEqual = GL_LEQUAL,         ///< Test passes if incoming <= stored
+    Greater = GL_GREATER,       ///< Test passes if incoming > stored
+    GEqual = GL_GEQUAL,         ///< Test passes if incoming >= stored
+    Equal = GL_EQUAL,           ///< Test passes if incoming == stored
+    NotEqual = GL_NOTEQUAL,     ///< Test passes if incoming != stored
+    Always = GL_ALWAYS          ///< Test always passes
+};
+
+/**
+ * @enum StencilOp
+ * @brief Stencil buffer update operations
+ */
+enum class StencilOp : GLenum {
+    Keep = GL_KEEP,                 ///< Keep current stencil value
+    Zero = GL_ZERO,                 ///< Set stencil value to 0
+    Replace = GL_REPLACE,           ///< Replace stencil value with reference value
+    Increment = GL_INCR,            ///< Increment stencil value (clamp to max)
+    IncrementWrap = GL_INCR_WRAP,   ///< Increment stencil value (wrap to 0)
+    Decrement = GL_DECR,            ///< Decrement stencil value (clamp to 0)
+    DecrementWrap = GL_DECR_WRAP,   ///< Decrement stencil value (wrap to max)
+    Invert = GL_INVERT              ///< Bitwise invert stencil value
+};
+
+/**
+ * @enum BlendFactor
+ * @brief Blend factor values for source and destination
+ */
+enum class BlendFactor : GLenum {
+    Zero = GL_ZERO,                             ///< Factor is (0, 0, 0, 0)
+    One = GL_ONE,                               ///< Factor is (1, 1, 1, 1)
+    SrcColor = GL_SRC_COLOR,                    ///< Factor is (Rs, Gs, Bs, As)
+    OneMinusSrcColor = GL_ONE_MINUS_SRC_COLOR,  ///< Factor is (1-Rs, 1-Gs, 1-Bs, 1-As)
+    DstColor = GL_DST_COLOR,                    ///< Factor is (Rd, Gd, Bd, Ad)
+    OneMinusDstColor = GL_ONE_MINUS_DST_COLOR,  ///< Factor is (1-Rd, 1-Gd, 1-Bd, 1-Ad)
+    SrcAlpha = GL_SRC_ALPHA,                    ///< Factor is (As, As, As, As)
+    OneMinusSrcAlpha = GL_ONE_MINUS_SRC_ALPHA,  ///< Factor is (1-As, 1-As, 1-As, 1-As)
+    DstAlpha = GL_DST_ALPHA,                    ///< Factor is (Ad, Ad, Ad, Ad)
+    OneMinusDstAlpha = GL_ONE_MINUS_DST_ALPHA,  ///< Factor is (1-Ad, 1-Ad, 1-Ad, 1-Ad)
+    ConstantColor = GL_CONSTANT_COLOR,          ///< Factor is (Rc, Gc, Bc, Ac)
+    OneMinusConstantColor = GL_ONE_MINUS_CONSTANT_COLOR, ///< Factor is (1-Rc, 1-Gc, 1-Bc, 1-Ac)
+    ConstantAlpha = GL_CONSTANT_ALPHA,          ///< Factor is (Ac, Ac, Ac, Ac)
+    OneMinusConstantAlpha = GL_ONE_MINUS_CONSTANT_ALPHA, ///< Factor is (1-Ac, 1-Ac, 1-Ac, 1-Ac)
+    SrcAlphaSaturate = GL_SRC_ALPHA_SATURATE    ///< Factor is (f, f, f, 1) where f = min(As, 1-Ad)
+};
+
+/**
+ * @enum BlendEquation
+ * @brief Blend equation modes for combining source and destination
+ */
+enum class BlendEquation : GLenum {
+    Add = GL_FUNC_ADD,                      ///< Result = src * srcFactor + dst * dstFactor
+    Subtract = GL_FUNC_SUBTRACT,            ///< Result = src * srcFactor - dst * dstFactor
+    ReverseSubtract = GL_FUNC_REVERSE_SUBTRACT, ///< Result = dst * dstFactor - src * srcFactor
+    Min = GL_MIN,                           ///< Result = min(src, dst)
+    Max = GL_MAX                            ///< Result = max(src, dst)
+};
+
+/**
+ * @struct StencilState
+ * @brief Complete stencil test state with OpenGL default values
+ * 
+ * Stores all stencil test parameters including enable flag, comparison function,
+ * reference value, masks, and stencil operations. All fields are initialized to
+ * OpenGL default values to ensure consistency with GPU state on startup.
+ */
+struct StencilState {
+    bool enabled = false;                       ///< Stencil test enabled (default: false)
+    StencilFunc func = StencilFunc::Always;     ///< Stencil comparison function (default: Always)
+    GLint ref = 0;                              ///< Reference value for stencil test (default: 0)
+    GLuint func_mask = 0xFFFFFFFF;              ///< Mask for stencil comparison (default: all bits)
+    GLuint write_mask = 0xFFFFFFFF;             ///< Mask for stencil buffer writes (default: all bits)
+    StencilOp sfail = StencilOp::Keep;          ///< Action when stencil test fails (default: Keep)
+    StencilOp dpfail = StencilOp::Keep;         ///< Action when stencil passes but depth fails (default: Keep)
+    StencilOp dppass = StencilOp::Keep;         ///< Action when both stencil and depth pass (default: Keep)
+};
+
+/**
+ * @struct BlendState
+ * @brief Complete blend state with OpenGL default values
+ * 
+ * Stores all blending parameters including enable flag, blend equations for RGB and Alpha,
+ * blend factors for source and destination, and constant blend color. All fields are
+ * initialized to OpenGL default values to ensure consistency with GPU state on startup.
+ */
+struct BlendState {
+    bool enabled = false;                           ///< Blending enabled (default: false)
+    BlendEquation equationRGB = BlendEquation::Add; ///< RGB blend equation (default: Add)
+    BlendEquation equationAlpha = BlendEquation::Add; ///< Alpha blend equation (default: Add)
+    BlendFactor sfactorRGB = BlendFactor::One;      ///< Source RGB blend factor (default: One)
+    BlendFactor dfactorRGB = BlendFactor::Zero;     ///< Destination RGB blend factor (default: Zero)
+    BlendFactor sfactorAlpha = BlendFactor::One;    ///< Source Alpha blend factor (default: One)
+    BlendFactor dfactorAlpha = BlendFactor::Zero;   ///< Destination Alpha blend factor (default: Zero)
+    float constant_color_r = 0.0f;                  ///< Constant blend color red component (default: 0.0)
+    float constant_color_g = 0.0f;                  ///< Constant blend color green component (default: 0.0)
+    float constant_color_b = 0.0f;                  ///< Constant blend color blue component (default: 0.0)
+    float constant_color_a = 0.0f;                  ///< Constant blend color alpha component (default: 0.0)
+};
+
+/**
+ * @struct DepthState
+ * @brief Complete depth test state with OpenGL default values
+ * 
+ * Stores all depth testing parameters including enable flag, write mask, comparison function,
+ * depth clamping, and depth range. All fields are initialized to OpenGL default values to
+ * ensure consistency with GPU state on startup.
+ */
+struct DepthState {
+    bool test_enabled = false;          ///< Depth test enabled (default: false)
+    bool write_enabled = true;          ///< Depth buffer writes enabled (default: true)
+    DepthFunc func = DepthFunc::Less;   ///< Depth comparison function (default: Less)
+    bool clamp_enabled = false;         ///< Depth clamping enabled (default: false)
+    double range_near = 0.0;            ///< Near depth range (default: 0.0)
+    double range_far = 1.0;             ///< Far depth range (default: 1.0)
+};
+
+/**
  * @class Framebuffer
- * @brief RAII-compliant abstraction for OpenGL Framebuffer Objects
+ * @brief RAII-compliant OpenGL Framebuffer Object abstraction
  * 
- * The Framebuffer class provides a flexible interface for off-screen rendering,
- * supporting multiple attachment configurations for advanced rendering techniques
- * including post-processing, shadow mapping, reflections, and deferred shading.
+ * Supports off-screen rendering with named texture access, type-safe configuration,
+ * and factory methods for common use cases. See README.md for usage examples.
  * 
- * Key features:
- * - Named texture access for multi-pass rendering
- * - Type-safe attachment configuration via enums
- * - Automatic resource cleanup via RAII
- * - Factory methods for common configurations
- * - Integration with EnGene's stack-based state management
- * 
- * @note All texture attachments are identified by user-defined names for easy retrieval.
- * @note Framebuffer objects use move semantics; copying is disabled.
+ * @note Texture attachments use user-defined names for retrieval.
+ * @note Move-only (copying disabled).
  */
 class Framebuffer {
 public:
     /**
      * @struct AttachmentSpec
-     * @brief Specification for a framebuffer attachment
+     * @brief Configuration for a single framebuffer attachment
      * 
-     * Defines the configuration for a single framebuffer attachment,
-     * including its attachment point, storage type, internal format,
-     * texture filtering/wrapping parameters, and optional name.
-     * 
-     * @note Only texture attachments should have names; renderbuffers are not retrievable.
+     * @note Only texture attachments need names (renderbuffers not retrievable).
      */
     struct AttachmentSpec {
         attachment::Point point;           ///< Attachment point (Color0-7, Depth, Stencil, DepthStencil)
@@ -422,20 +374,7 @@ public:
         bool is_shadow_texture;            ///< Enable shadow comparison mode (for depth textures)
         
         /**
-         * @brief Generalized constructor for attachment specifications
-         * @param p Attachment point
-         * @param f Internal format
-         * @param s Storage type (defaults to Renderbuffer)
-         * @param n Texture name for later retrieval (defaults to empty string)
-         * @param filt Texture filtering mode (defaults to Linear)
-         * @param w Texture wrapping mode (defaults to ClampToEdge)
-         * @param is_shadow Enable shadow comparison mode (defaults to false)
-         * 
-         * Creates an attachment specification with full control over all parameters.
-         * 
-         * @note For renderbuffer attachments, leave name empty and storage as Renderbuffer.
-         * @note For texture attachments, set storage to Texture and provide a name.
-         * @note Shadow textures should use depth formats and set is_shadow to true.
+         * @brief Constructor for attachment specifications
          */
         AttachmentSpec(
             attachment::Point p, 
@@ -769,28 +708,8 @@ public:
     Framebuffer& operator=(const Framebuffer&) = delete;
     
     /**
-     * @brief Factory method for custom framebuffer configuration.
-     * @param width Framebuffer width in pixels
-     * @param height Framebuffer height in pixels
-     * @param specs Vector of attachment specifications
-     * @return Shared pointer to the created framebuffer
-     * @throws exception::FramebufferException if framebuffer creation fails
-     * 
-     * This is the most flexible factory method, allowing complete control
-     * over attachment configuration. Use this when the preset factories
-     * don't match your requirements.
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::Make(800, 600, {
-     *     framebuffer::Framebuffer::AttachmentSpec(
-     *         framebuffer::attachment::Point::Color0,
-     *         framebuffer::attachment::Format::RGBA16F,
-     *         "hdr_color"),
-     *     framebuffer::Framebuffer::AttachmentSpec(
-     *         framebuffer::attachment::Point::Depth,
-     *         framebuffer::attachment::Format::DepthComponent24)
-     * });
-     * @endcode
+     * @brief Factory method for custom framebuffer configuration
+     * @throws exception::FramebufferException if creation fails
      */
     static FramebufferPtr Make(int width, int height, 
                                 const std::vector<AttachmentSpec>& specs) {
@@ -798,26 +717,8 @@ public:
     }
     
     /**
-     * @brief Factory method for render-to-texture configuration.
-     * @param width Framebuffer width in pixels
-     * @param height Framebuffer height in pixels
-     * @param colorTextureName Name for the color texture attachment
-     * @param colorFormat Internal format for the color attachment (default: RGBA8)
-     * @param depthFormat Internal format for the depth attachment (default: DepthComponent24)
-     * @return Shared pointer to the created framebuffer
-     * @throws exception::FramebufferException if framebuffer creation fails
-     * 
-     * Creates a framebuffer with one color texture attachment and one depth
-     * renderbuffer attachment. This is the most common configuration for
-     * off-screen rendering, reflections, and shadow receivers.
-     * 
-     * The color texture can be retrieved by name and used in subsequent
-     * rendering passes. The depth attachment is a renderbuffer (not readable).
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
-     * // Later: auto texture = fbo->getTexture("scene_color");
-     * @endcode
+     * @brief Factory for render-to-texture (color texture + depth renderbuffer)
+     * @throws exception::FramebufferException if creation fails
      */
     static FramebufferPtr MakeRenderToTexture(
         int width, int height, 
@@ -834,27 +735,9 @@ public:
     }
     
     /**
-     * @brief Factory method for post-processing configuration.
-     * @param width Framebuffer width in pixels
-     * @param height Framebuffer height in pixels
-     * @param colorTextureName Name for the color texture attachment
-     * @param colorFormat Internal format for the color attachment (default: RGBA8)
-     * @param depthFormat Internal format for the depth attachment (default: DepthComponent24)
-     * @return Shared pointer to the created framebuffer
-     * @throws exception::FramebufferException if framebuffer creation fails
-     * 
-     * Creates a framebuffer with one color texture attachment and one depth
-     * renderbuffer attachment. This configuration is optimized for post-processing
-     * effects while maintaining proper depth testing during the initial render pass.
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakePostProcessing(800, 600, "post_color");
-     * // Render scene to fbo with depth testing, then apply post-processing using the texture
-     * @endcode
-     * 
-     * @note The depth attachment is a renderbuffer (not readable), suitable for
-     *       standard depth testing during rendering. If you need to read depth values
-     *       in shaders, use the custom Make() factory with a depth texture attachment.
+     * @brief Factory for post-processing (color texture + depth renderbuffer)
+     * @throws exception::FramebufferException if creation fails
+     * @note Use custom Make() if you need readable depth texture
      */
     static FramebufferPtr MakePostProcessing(
         int width, int height, 
@@ -871,28 +754,9 @@ public:
     }
     
     /**
-     * @brief Factory method for shadow map configuration.
-     * @param width Shadow map width in pixels
-     * @param height Shadow map height in pixels
-     * @param depthTextureName Name for the depth texture attachment
-     * @param depthFormat Internal format for the depth attachment (default: DepthComponent24)
-     * @return Shared pointer to the created framebuffer
-     * @throws exception::FramebufferException if framebuffer creation fails
-     * 
-     * Creates a framebuffer with one depth texture attachment and no color
-     * attachments. This configuration is used for shadow mapping, where only
-     * depth information is needed.
-     * 
-     * The framebuffer is automatically configured with GL_NONE for draw buffers,
-     * preventing fragment shader color output errors.
-     * 
-     * @code
-     * auto shadow_fbo = framebuffer::Framebuffer::MakeShadowMap(1024, 1024, "shadow_depth");
-     * // Render from light's perspective, then use shadow_depth texture for shadow testing
-     * @endcode
-     * 
-     * @note The depth texture can be sampled in shaders for shadow comparison.
-     * @note Consider using DepthComponent32F for higher precision shadow maps.
+     * @brief Factory for shadow mapping (depth texture only, no color)
+     * @throws exception::FramebufferException if creation fails
+     * @note Depth texture has shadow comparison mode enabled
      */
     static FramebufferPtr MakeShadowMap(
         int width, int height, 
@@ -910,37 +774,9 @@ public:
     }
     
     /**
-     * @brief Factory method for G-Buffer configuration (deferred shading).
-     * @param width G-Buffer width in pixels
-     * @param height G-Buffer height in pixels
-     * @param colorTextureNames Vector of names for color texture attachments
-     * @param colorFormat Internal format for all color attachments (default: RGBA16F)
-     * @param depthFormat Internal format for the depth attachment (default: DepthComponent24)
-     * @return Shared pointer to the created framebuffer
-     * @throws exception::FramebufferException if framebuffer creation fails
-     * 
-     * Creates a framebuffer with multiple color texture attachments (up to 8)
-     * and one depth renderbuffer attachment. This configuration is used for
-     * deferred shading, where geometry data is written to multiple render
-     * targets in a single pass.
-     * 
-     * Each color texture is assigned to sequential attachment points starting
-     * from Color0. All textures can be retrieved by name for use in the
-     * lighting pass.
-     * 
-     * @code
-     * auto gbuffer = framebuffer::Framebuffer::MakeGBuffer(800, 600, {
-     *     "g_position",
-     *     "g_normal",
-     *     "g_albedo",
-     *     "g_specular"
-     * });
-     * // Geometry pass writes to all 4 textures
-     * // Lighting pass reads from all 4 textures
-     * @endcode
-     * 
-     * @note Maximum of 8 color attachments (OpenGL 4.3 minimum guarantee).
-     * @note HDR format (RGBA16F) is recommended for accurate lighting calculations.
+     * @brief Factory for G-Buffer (multiple color textures + depth renderbuffer)
+     * @throws exception::FramebufferException if creation fails
+     * @note Maximum 8 color attachments (OpenGL 4.3 guarantee)
      */
     static FramebufferPtr MakeGBuffer(
         int width, int height, 
@@ -966,17 +802,8 @@ public:
     }
     
     /**
-     * @brief Binds the framebuffer (internal use by FramebufferStack).
-     * 
-     * Binds this framebuffer as the current render target via glBindFramebuffer.
-     * If clear-on-bind is enabled, automatically clears the appropriate buffers.
-     * This is a low-level method used internally by FramebufferStack.
-     * 
-     * @note Application code should use framebuffer::stack()->push() instead
-     *       of calling this method directly. The stack manages viewport and
-     *       draw buffer configuration automatically.
-     * @note This method does not set viewport or draw buffers; those are
-     *       managed by FramebufferStack.
+     * @brief Binds framebuffer (internal use by FramebufferStack)
+     * @note Use framebuffer::stack()->push() instead
      */
     void bind() {
         glBindFramebuffer(GL_FRAMEBUFFER, m_fbo_id);
@@ -1007,14 +834,8 @@ public:
     }
     
     /**
-     * @brief Unbinds the framebuffer (internal use by FramebufferStack).
-     * 
-     * Binds the default framebuffer (ID 0) as the current render target.
-     * This is a low-level method used internally by FramebufferStack.
-     * 
-     * @note Application code should use framebuffer::stack()->pop() instead
-     *       of calling this method directly. The stack manages state restoration
-     *       automatically.
+     * @brief Unbinds framebuffer (internal use by FramebufferStack)
+     * @note Use framebuffer::stack()->pop() instead
      */
     void unbind() {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1022,26 +843,9 @@ public:
     }
     
     /**
-     * @brief Retrieves a texture attachment by name.
-     * @param name The name of the texture attachment
-     * @return Shared pointer to the texture
-     * @throws exception::FramebufferException if texture name doesn't exist or refers to a renderbuffer
-     * 
-     * Retrieves a texture attachment by its user-defined name for use in
-     * subsequent rendering passes. The texture can be bound to texture units
-     * and sampled in shaders.
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
-     * // ... render to FBO ...
-     * auto texture = fbo->getTexture("scene_color");
-     * texture::stack()->push(texture, 0);
-     * @endcode
-     * 
-     * @note Only texture attachments can be retrieved; renderbuffer attachments
-     *       are not accessible (they are write-only).
-     * @note The returned texture is managed by shared_ptr and can be safely
-     *       stored and used after the framebuffer is destroyed.
+     * @brief Retrieves texture attachment by name
+     * @throws exception::FramebufferException if not found
+     * @note Only texture attachments retrievable (not renderbuffers)
      */
     texture::TexturePtr getTexture(const std::string& name) const {
         auto it = m_named_textures.find(name);
@@ -1052,47 +856,16 @@ public:
     }
     
     /**
-     * @brief Checks if a named texture exists in the framebuffer.
-     * @param name The name of the texture attachment
-     * @return True if the texture exists, false otherwise
-     * 
-     * Use this method to check if a texture attachment exists before
-     * attempting to retrieve it, avoiding exceptions.
-     * 
-     * @code
-     * if (fbo->hasTexture("scene_color")) {
-     *     auto texture = fbo->getTexture("scene_color");
-     *     // ... use texture ...
-     * }
-     * @endcode
+     * @brief Checks if named texture exists
      */
     bool hasTexture(const std::string& name) const {
         return m_named_textures.find(name) != m_named_textures.end();
     }
     
     /**
-     * @brief Generates mipmaps for a named texture attachment.
-     * @param textureName The name of the texture attachment
+     * @brief Generates mipmaps for texture attachment
      * @throws exception::FramebufferException if texture doesn't exist
-     * 
-     * Generates a mipmap chain for the specified texture attachment and
-     * configures texture parameters to enable mipmap filtering. This is
-     * useful for downsampling effects, bloom, and improved texture filtering
-     * when the texture is sampled at different scales.
-     * 
-     * The method automatically:
-     * - Updates texture parameters to GL_LINEAR_MIPMAP_LINEAR for minification
-     * - Generates the complete mipmap chain via glGenerateMipmap
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
-     * // ... render to FBO ...
-     * fbo->generateMipmaps("scene_color");
-     * // Texture now has mipmaps for improved filtering
-     * @endcode
-     * 
-     * @note Mipmap generation is only valid for texture attachments, not renderbuffers.
-     * @note The texture must have power-of-two dimensions for optimal mipmap generation.
+     * @note Only for texture attachments (not renderbuffers)
      */
     void generateMipmaps(const std::string& textureName) {
         // Validate texture exists
@@ -1114,38 +887,9 @@ public:
     }
     
     /**
-     * @brief Attaches framebuffer textures to shader samplers.
-     * @param shader The shader to attach textures to
-     * @param textureToSamplerMap Map of texture names to sampler uniform names
-     * @throws exception::FramebufferException if a texture name doesn't exist
-     * 
-     * Utility method that automatically configures dynamic uniforms for shader
-     * samplers, mapping framebuffer texture attachments to sampler uniform names.
-     * This eliminates the need to manually configure each sampler uniform.
-     * 
-     * The method:
-     * - Validates that all texture names exist in the framebuffer
-     * - Configures dynamic uniforms using texture::getSamplerProvider()
-     * - Enables automatic texture unit resolution via TextureStack
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
-     * auto shader = shader::Make("post_process.vert", "blur.frag");
-     * 
-     * // Attach FBO texture to shader's u_scene_texture sampler
-     * fbo->attachToShader(shader, {{"scene_color", "u_scene_texture"}});
-     * 
-     * // Later in render loop
-     * shader::stack()->push(shader);
-     * texture::stack()->registerSamplerUnit("u_scene_texture", 0);
-     * texture::stack()->push(fbo->getTexture("scene_color"), 0);
-     * // Shader automatically receives correct texture unit
-     * @endcode
-     * 
-     * @note This method only configures the shader uniforms; you still need to
-     *       push textures onto the TextureStack during rendering.
-     * @note Multiple textures can be attached in a single call by providing
-     *       multiple entries in the map.
+     * @brief Configures shader samplers for FBO textures
+     * @throws exception::FramebufferException if texture name doesn't exist
+     * @note Still need to push textures to TextureStack during rendering
      */
     void attachToShader(shader::ShaderPtr shader, 
                         const std::unordered_map<std::string, std::string>& textureToSamplerMap) {
@@ -1166,125 +910,338 @@ public:
         }
     }
     
-    /**
-     * @brief Gets the framebuffer width.
-     * @return Width in pixels
-     * 
-     * Returns the width specified during framebuffer creation. This matches
-     * the dimensions of all attachments.
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "color");
-     * int width = fbo->getWidth();  // Returns 800
-     * @endcode
-     */
+    /** @brief Gets framebuffer width in pixels */
     int getWidth() const { return m_width; }
     
-    /**
-     * @brief Gets the framebuffer height.
-     * @return Height in pixels
-     * 
-     * Returns the height specified during framebuffer creation. This matches
-     * the dimensions of all attachments.
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "color");
-     * int height = fbo->getHeight();  // Returns 600
-     * @endcode
-     */
+    /** @brief Gets framebuffer height in pixels */
     int getHeight() const { return m_height; }
     
-    /**
-     * @brief Gets the OpenGL framebuffer ID.
-     * @return The framebuffer object ID
-     * 
-     * Returns the underlying OpenGL framebuffer object ID. This is primarily
-     * for internal use by FramebufferStack and debugging purposes.
-     * 
-     * @note Direct manipulation of the framebuffer via this ID is discouraged;
-     *       use the provided methods instead.
-     */
+    /** @brief Gets OpenGL framebuffer ID (for internal use) */
     GLuint getID() const { return m_fbo_id; }
     
     /**
-     * @brief Sets whether the framebuffer should automatically clear on bind.
-     * @param clear_on_bind If true, framebuffer will clear when bound (default: true)
-     * 
-     * Controls whether the framebuffer automatically clears its attachments
-     * when it is bound via the FramebufferStack. This is useful for:
-     * - Disabling automatic clearing when accumulating multiple render passes
-     * - Enabling automatic clearing for single-pass rendering (default behavior)
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene");
-     * fbo->setClearOnBind(false);  // Disable automatic clearing
-     * 
-     * framebuffer::stack()->push(fbo);
-     * // Manual clearing if needed
-     * glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-     * // ... render ...
-     * framebuffer::stack()->pop();
-     * @endcode
-     * 
-     * @note The clearing behavior is determined by the attachment types:
-     *       - Color attachments: GL_COLOR_BUFFER_BIT
-     *       - Depth attachments: GL_DEPTH_BUFFER_BIT
-     *       - Stencil attachments: GL_STENCIL_BUFFER_BIT
+     * @brief Sets automatic clear on bind (default: true)
+     * @note Clears color/depth/stencil based on attachments
      */
     void setClearOnBind(bool clear_on_bind) {
         m_clear_on_bind = clear_on_bind;
     }
     
-    /**
-     * @brief Gets whether the framebuffer automatically clears on bind.
-     * @return True if framebuffer clears on bind, false otherwise
-     * 
-     * Returns the current clear-on-bind setting for this framebuffer.
-     * 
-     * @code
-     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene");
-     * bool clears = fbo->getClearOnBind();  // Returns true (default)
-     * @endcode
-     */
+    /** @brief Gets clear-on-bind setting */
     bool getClearOnBind() const {
         return m_clear_on_bind;
     }
 };
 
 /**
+ * @class RenderState
+ * @brief Offline configuration for stencil, blend, and depth state
+ * 
+ * Provides a way to pre-configure stencil, blend, and depth state without issuing OpenGL calls.
+ * State can be built offline and then applied atomically when pushing a framebuffer.
+ * 
+ * @note Access state members via friend declaration (FramebufferStack)
+ * @note Use stencil(), blend(), and depth() methods to configure state offline
+ */
+class RenderState {
+private:
+    StencilState m_stencil_state;  ///< Stencil test state (CPU-side only)
+    BlendState m_blend_state;      ///< Blend state (CPU-side only)
+    DepthState m_depth_state;      ///< Depth test state (CPU-side only)
+    
+    // Friend declaration for FramebufferStack to access private state
+    friend class FramebufferStack;
+    
+public:
+    /**
+     * @class StencilManager
+     * @brief Offline stencil state configuration (no OpenGL calls)
+     * 
+     * Provides methods to configure stencil testing without issuing OpenGL calls.
+     * All methods modify CPU-side state only. State is applied when RenderState
+     * is used with FramebufferStack::push().
+     */
+    class StencilManager {
+    private:
+        RenderState* m_owner;  ///< Pointer to owning RenderState
+        
+    public:
+        /**
+         * @brief Constructs StencilManager with owner pointer
+         * @param owner Pointer to the RenderState instance
+         */
+        explicit StencilManager(RenderState* owner) : m_owner(owner) {}
+        
+        /**
+         * @brief Enables or disables stencil testing (offline)
+         * @param enabled True to enable stencil test, false to disable
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setTest(bool enabled) {
+            m_owner->m_stencil_state.enabled = enabled;
+        }
+        
+        /**
+         * @brief Sets stencil write mask (offline)
+         * @param mask Bit mask controlling which bits are written to stencil buffer
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setWriteMask(GLuint mask) {
+            m_owner->m_stencil_state.write_mask = mask;
+        }
+        
+        /**
+         * @brief Sets stencil test function and parameters (offline)
+         * @param func Stencil comparison function
+         * @param ref Reference value for stencil test
+         * @param mask Bit mask for stencil comparison
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setFunction(StencilFunc func, GLint ref, GLuint mask) {
+            m_owner->m_stencil_state.func = func;
+            m_owner->m_stencil_state.ref = ref;
+            m_owner->m_stencil_state.func_mask = mask;
+        }
+        
+        /**
+         * @brief Sets stencil buffer update operations (offline)
+         * @param sfail Action when stencil test fails
+         * @param dpfail Action when stencil passes but depth test fails
+         * @param dppass Action when both stencil and depth tests pass
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setOperation(StencilOp sfail, StencilOp dpfail, StencilOp dppass) {
+            m_owner->m_stencil_state.sfail = sfail;
+            m_owner->m_stencil_state.dpfail = dpfail;
+            m_owner->m_stencil_state.dppass = dppass;
+        }
+        
+        // Note: setClearValue and clearBuffer are NOT provided
+        // (they are immediate operations that don't make sense offline)
+    };
+    
+    /**
+     * @class BlendManager
+     * @brief Offline blend state configuration (no OpenGL calls)
+     * 
+     * Provides methods to configure blending without issuing OpenGL calls.
+     * All methods modify CPU-side state only. State is applied when RenderState
+     * is used with FramebufferStack::push().
+     */
+    class BlendManager {
+    private:
+        RenderState* m_owner;  ///< Pointer to owning RenderState
+        
+    public:
+        /**
+         * @brief Constructs BlendManager with owner pointer
+         * @param owner Pointer to the RenderState instance
+         */
+        explicit BlendManager(RenderState* owner) : m_owner(owner) {}
+        
+        /**
+         * @brief Enables or disables blending (offline)
+         * @param enabled True to enable blending, false to disable
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setEnabled(bool enabled) {
+            m_owner->m_blend_state.enabled = enabled;
+        }
+        
+        /**
+         * @brief Sets blend equation for both RGB and Alpha (offline)
+         * @param mode Blend equation to use for both RGB and Alpha channels
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setEquation(BlendEquation mode) {
+            m_owner->m_blend_state.equationRGB = mode;
+            m_owner->m_blend_state.equationAlpha = mode;
+        }
+        
+        /**
+         * @brief Sets blend equation separately for RGB and Alpha (offline)
+         * @param modeRGB Blend equation for RGB channels
+         * @param modeAlpha Blend equation for Alpha channel
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setEquationSeparate(BlendEquation modeRGB, BlendEquation modeAlpha) {
+            m_owner->m_blend_state.equationRGB = modeRGB;
+            m_owner->m_blend_state.equationAlpha = modeAlpha;
+        }
+        
+        /**
+         * @brief Sets blend function for both RGB and Alpha (offline)
+         * @param sfactor Source blend factor for both RGB and Alpha
+         * @param dfactor Destination blend factor for both RGB and Alpha
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setFunction(BlendFactor sfactor, BlendFactor dfactor) {
+            m_owner->m_blend_state.sfactorRGB = sfactor;
+            m_owner->m_blend_state.dfactorRGB = dfactor;
+            m_owner->m_blend_state.sfactorAlpha = sfactor;
+            m_owner->m_blend_state.dfactorAlpha = dfactor;
+        }
+        
+        /**
+         * @brief Sets blend function separately for RGB and Alpha (offline)
+         * @param srcRGB Source blend factor for RGB channels
+         * @param dstRGB Destination blend factor for RGB channels
+         * @param srcAlpha Source blend factor for Alpha channel
+         * @param dstAlpha Destination blend factor for Alpha channel
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setFunctionSeparate(BlendFactor srcRGB, BlendFactor dstRGB,
+                                 BlendFactor srcAlpha, BlendFactor dstAlpha) {
+            m_owner->m_blend_state.sfactorRGB = srcRGB;
+            m_owner->m_blend_state.dfactorRGB = dstRGB;
+            m_owner->m_blend_state.sfactorAlpha = srcAlpha;
+            m_owner->m_blend_state.dfactorAlpha = dstAlpha;
+        }
+        
+        /**
+         * @brief Sets blend constant color (offline)
+         * @param r Red component (0.0 to 1.0)
+         * @param g Green component (0.0 to 1.0)
+         * @param b Blue component (0.0 to 1.0)
+         * @param a Alpha component (0.0 to 1.0)
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setConstantColor(float r, float g, float b, float a) {
+            m_owner->m_blend_state.constant_color_r = r;
+            m_owner->m_blend_state.constant_color_g = g;
+            m_owner->m_blend_state.constant_color_b = b;
+            m_owner->m_blend_state.constant_color_a = a;
+        }
+    };
+    
+    /**
+     * @class DepthManager
+     * @brief Offline depth state configuration (no OpenGL calls)
+     * 
+     * Provides methods to configure depth testing without issuing OpenGL calls.
+     * All methods modify CPU-side state only. State is applied when RenderState
+     * is used with FramebufferStack::push().
+     */
+    class DepthManager {
+    private:
+        RenderState* m_owner;  ///< Pointer to owning RenderState
+        
+    public:
+        /**
+         * @brief Constructs DepthManager with owner pointer
+         * @param owner Pointer to the RenderState instance
+         */
+        explicit DepthManager(RenderState* owner) : m_owner(owner) {}
+        
+        /**
+         * @brief Enables or disables depth testing (offline)
+         * @param enabled True to enable depth test, false to disable
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setTest(bool enabled) {
+            m_owner->m_depth_state.test_enabled = enabled;
+        }
+        
+        /**
+         * @brief Enables or disables depth buffer writes (offline)
+         * @param enabled True to enable depth writes, false to disable
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setWrite(bool enabled) {
+            m_owner->m_depth_state.write_enabled = enabled;
+        }
+        
+        /**
+         * @brief Sets depth test comparison function (offline)
+         * @param func Depth comparison function
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setFunction(DepthFunc func) {
+            m_owner->m_depth_state.func = func;
+        }
+        
+        /**
+         * @brief Enables or disables depth clamping (offline)
+         * @param enabled True to enable depth clamping, false to disable
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setClamp(bool enabled) {
+            m_owner->m_depth_state.clamp_enabled = enabled;
+        }
+        
+        /**
+         * @brief Sets depth range (offline)
+         * @param near_val Near depth range value (default: 0.0)
+         * @param far_val Far depth range value (default: 1.0)
+         * @note No OpenGL calls - modifies CPU-side state only
+         */
+        void setRange(double near_val, double far_val) {
+            m_owner->m_depth_state.range_near = near_val;
+            m_owner->m_depth_state.range_far = far_val;
+        }
+    };
+    
+    /**
+     * @brief Default constructor - initializes state to OpenGL defaults
+     */
+    RenderState() = default;
+    
+    /**
+     * @brief Returns StencilManager instance for configuring stencil state offline
+     * @return StencilManager proxy object
+     */
+    StencilManager stencil() {
+        return StencilManager(this);
+    }
+    
+    /**
+     * @brief Returns BlendManager instance for configuring blend state offline
+     * @return BlendManager proxy object
+     */
+    BlendManager blend() {
+        return BlendManager(this);
+    }
+    
+    /**
+     * @brief Returns DepthManager instance for configuring depth state offline
+     * @return DepthManager proxy object
+     */
+    DepthManager depth() {
+        return DepthManager(this);
+    }
+};
+
+/**
+ * @brief Type alias for shared pointer to RenderState
+ */
+using RenderStatePtr = std::shared_ptr<RenderState>;
+
+/**
  * @class FramebufferStack
- * @brief Manages hierarchical framebuffer state with automatic restoration
+ * @brief Stack-based framebuffer management with GPU state tracking
  * 
- * The FramebufferStack provides stack-based framebuffer management, similar to
- * ShaderStack, TransformStack, and MaterialStack. It tracks the currently bound
- * framebuffer, viewport dimensions, and draw buffer configuration, enabling
- * efficient state restoration and minimizing redundant OpenGL calls.
+ * Manages framebuffer binding, viewport, and draw buffers hierarchically.
+ * Optimizes by tracking GPU state to prevent redundant calls.
  * 
- * Key features:
- * - Hierarchical state management (push/pop operations)
- * - GPU state tracking to prevent redundant glBindFramebuffer calls
- * - Viewport optimization (only updates when dimensions change)
- * - Automatic window dimension query when restoring default framebuffer
- * - Protected base state (cannot pop below default framebuffer)
- * 
- * @note Access via singleton: framebuffer::stack()
- * @note The base level represents the default framebuffer (window)
+ * @note Access via framebuffer::stack()
+ * @note Base level is default framebuffer (cannot pop)
  */
 class FramebufferStack {
 private:
     /**
      * @struct FramebufferState
-     * @brief Complete framebuffer state at a single stack level
-     * 
-     * Stores all state necessary to restore a framebuffer configuration,
-     * including the framebuffer pointer, viewport dimensions, and draw
-     * buffer configuration.
+     * @brief Complete framebuffer state (FBO, viewport, draw buffers, stencil, blend, depth)
      */
     struct FramebufferState {
         FramebufferPtr fbo;          ///< Framebuffer pointer (nullptr = default framebuffer)
         int viewport_width;          ///< Viewport width in pixels
         int viewport_height;         ///< Viewport height in pixels
         std::vector<GLenum> draw_buffers; ///< Draw buffer configuration for glDrawBuffers
+        
+        // State management (NEW)
+        StencilState stencil_state;  ///< Stencil test state
+        BlendState blend_state;      ///< Blend state
+        DepthState depth_state;      ///< Depth test state
     };
     
     std::vector<FramebufferState> m_stack;
@@ -1293,6 +1250,11 @@ private:
     GLuint m_currently_bound_fbo;
     int m_current_viewport_width;
     int m_current_viewport_height;
+    
+    // GPU state caching for stencil, blend, and depth (NEW)
+    StencilState m_gpu_stencil_state;  ///< Cached GPU stencil state
+    BlendState m_gpu_blend_state;      ///< Cached GPU blend state
+    DepthState m_gpu_depth_state;      ///< Cached GPU depth state
     
     /**
      * @brief Private constructor for singleton pattern.
@@ -1312,72 +1274,616 @@ private:
         base_state.viewport_height = 0;
         base_state.draw_buffers = { GL_BACK };  // Default draw buffer
         
+        // Initialize stencil, blend, and depth state to OpenGL defaults
+        base_state.stencil_state = StencilState();
+        base_state.blend_state = BlendState();
+        base_state.depth_state = DepthState();
+        
         m_stack.push_back(base_state);
+        
+        // Initialize GPU state cache to OpenGL defaults
+        m_gpu_stencil_state = StencilState();
+        m_gpu_blend_state = BlendState();
+        m_gpu_depth_state = DepthState();
     }
+    
+    /**
+     * @brief Synchronizes GPU state to match target framebuffer state
+     * @param target_state The desired state to synchronize to
+     * 
+     * Compares all fields in target_state with cached GPU state and issues
+     * OpenGL calls only for fields that differ. Updates GPU state cache after
+     * each successful state change.
+     */
+    void syncGpuToState(const FramebufferState& target_state);
     
     friend FramebufferStackPtr stack();
     
 public:
+    /**
+     * @class StencilManager
+     * @brief Proxy class for configuring stencil test state
+     * 
+     * Provides methods to configure stencil testing with automatic GPU state caching
+     * to prevent redundant OpenGL calls. All methods update the logical state at the
+     * top of the stack and compare with cached GPU state before issuing OpenGL calls.
+     */
+    class StencilManager {
+    private:
+        FramebufferStack* m_owner;  ///< Pointer to owning FramebufferStack
+        
+    public:
+        /**
+         * @brief Constructs StencilManager with owner pointer
+         * @param owner Pointer to the FramebufferStack instance
+         */
+        explicit StencilManager(FramebufferStack* owner) : m_owner(owner) {}
+        
+        /**
+         * @brief Enables or disables stencil testing
+         * @param enabled True to enable stencil test, false to disable
+         */
+        void setTest(bool enabled) {
+            // 1. Get logical state (top of stack)
+            StencilState& logical_state = m_owner->m_stack.back().stencil_state;
+            
+            // 2. Update logical state
+            logical_state.enabled = enabled;
+            
+            // 3. Get GPU state cache
+            StencilState& gpu_state = m_owner->m_gpu_stencil_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.enabled != gpu_state.enabled) {
+                if (enabled) {
+                    glEnable(GL_STENCIL_TEST);
+                } else {
+                    glDisable(GL_STENCIL_TEST);
+                }
+                GL_CHECK("set stencil test");
+                gpu_state.enabled = logical_state.enabled;
+            }
+        }
+        
+        /**
+         * @brief Sets stencil write mask
+         * @param mask Bit mask controlling which bits are written to stencil buffer
+         */
+        void setWriteMask(GLuint mask) {
+            // 1. Get logical state (top of stack)
+            StencilState& logical_state = m_owner->m_stack.back().stencil_state;
+            
+            // 2. Update logical state
+            logical_state.write_mask = mask;
+            
+            // 3. Get GPU state cache
+            StencilState& gpu_state = m_owner->m_gpu_stencil_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.write_mask != gpu_state.write_mask) {
+                glStencilMask(mask);
+                GL_CHECK("set stencil write mask");
+                gpu_state.write_mask = logical_state.write_mask;
+            }
+        }
+        
+        /**
+         * @brief Sets stencil test function and parameters
+         * @param func Stencil comparison function
+         * @param ref Reference value for stencil test
+         * @param mask Bit mask for stencil comparison
+         */
+        void setFunction(StencilFunc func, GLint ref, GLuint mask) {
+            // 1. Get logical state (top of stack)
+            StencilState& logical_state = m_owner->m_stack.back().stencil_state;
+            
+            // 2. Update logical state
+            logical_state.func = func;
+            logical_state.ref = ref;
+            logical_state.func_mask = mask;
+            
+            // 3. Get GPU state cache
+            StencilState& gpu_state = m_owner->m_gpu_stencil_state;
+            
+            // 4. Compare and update if any parameter differs
+            if (logical_state.func != gpu_state.func ||
+                logical_state.ref != gpu_state.ref ||
+                logical_state.func_mask != gpu_state.func_mask) {
+                
+                glStencilFunc(
+                    static_cast<GLenum>(func),
+                    ref,
+                    mask);
+                GL_CHECK("set stencil function");
+                
+                gpu_state.func = logical_state.func;
+                gpu_state.ref = logical_state.ref;
+                gpu_state.func_mask = logical_state.func_mask;
+            }
+        }
+        
+        /**
+         * @brief Sets stencil buffer update operations
+         * @param sfail Action when stencil test fails
+         * @param dpfail Action when stencil passes but depth test fails
+         * @param dppass Action when both stencil and depth tests pass
+         */
+        void setOperation(StencilOp sfail, StencilOp dpfail, StencilOp dppass) {
+            // 1. Get logical state (top of stack)
+            StencilState& logical_state = m_owner->m_stack.back().stencil_state;
+            
+            // 2. Update logical state
+            logical_state.sfail = sfail;
+            logical_state.dpfail = dpfail;
+            logical_state.dppass = dppass;
+            
+            // 3. Get GPU state cache
+            StencilState& gpu_state = m_owner->m_gpu_stencil_state;
+            
+            // 4. Compare and update if any parameter differs
+            if (logical_state.sfail != gpu_state.sfail ||
+                logical_state.dpfail != gpu_state.dpfail ||
+                logical_state.dppass != gpu_state.dppass) {
+                
+                glStencilOp(
+                    static_cast<GLenum>(sfail),
+                    static_cast<GLenum>(dpfail),
+                    static_cast<GLenum>(dppass));
+                GL_CHECK("set stencil operation");
+                
+                gpu_state.sfail = logical_state.sfail;
+                gpu_state.dpfail = logical_state.dpfail;
+                gpu_state.dppass = logical_state.dppass;
+            }
+        }
+        
+        /**
+         * @brief Sets stencil clear value (immediate operation)
+         * @param value Value to clear stencil buffer to
+         * @note This is an immediate operation that does not modify logical or GPU state cache
+         */
+        void setClearValue(GLint value) {
+            glClearStencil(value);
+            GL_CHECK("set stencil clear value");
+        }
+        
+        /**
+         * @brief Clears stencil buffer (immediate operation)
+         * @note This is an immediate operation that does not modify logical or GPU state cache
+         */
+        void clearBuffer() {
+            glClear(GL_STENCIL_BUFFER_BIT);
+            GL_CHECK("clear stencil buffer");
+        }
+    };
+    
+    /**
+     * @brief Returns StencilManager instance for configuring stencil state
+     * @return StencilManager proxy object
+     */
+    StencilManager stencil() {
+        return StencilManager(this);
+    }
+    
+    /**
+     * @class BlendManager
+     * @brief Proxy class for configuring blend state
+     * 
+     * Provides methods to configure blending with automatic GPU state caching
+     * to prevent redundant OpenGL calls. All methods update the logical state at the
+     * top of the stack and compare with cached GPU state before issuing OpenGL calls.
+     */
+    class BlendManager {
+    private:
+        FramebufferStack* m_owner;  ///< Pointer to owning FramebufferStack
+        
+    public:
+        /**
+         * @brief Constructs BlendManager with owner pointer
+         * @param owner Pointer to the FramebufferStack instance
+         */
+        explicit BlendManager(FramebufferStack* owner) : m_owner(owner) {}
+        
+        /**
+         * @brief Enables or disables blending
+         * @param enabled True to enable blending, false to disable
+         */
+        void setEnabled(bool enabled) {
+            // 1. Get logical state (top of stack)
+            BlendState& logical_state = m_owner->m_stack.back().blend_state;
+            
+            // 2. Update logical state
+            logical_state.enabled = enabled;
+            
+            // 3. Get GPU state cache
+            BlendState& gpu_state = m_owner->m_gpu_blend_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.enabled != gpu_state.enabled) {
+                if (enabled) {
+                    glEnable(GL_BLEND);
+                } else {
+                    glDisable(GL_BLEND);
+                }
+                GL_CHECK("set blend enabled");
+                gpu_state.enabled = logical_state.enabled;
+            }
+        }
+        
+        /**
+         * @brief Sets blend equation for both RGB and Alpha
+         * @param mode Blend equation to use for both RGB and Alpha channels
+         */
+        void setEquation(BlendEquation mode) {
+            // 1. Get logical state (top of stack)
+            BlendState& logical_state = m_owner->m_stack.back().blend_state;
+            
+            // 2. Update logical state (both RGB and Alpha to same value)
+            logical_state.equationRGB = mode;
+            logical_state.equationAlpha = mode;
+            
+            // 3. Get GPU state cache
+            BlendState& gpu_state = m_owner->m_gpu_blend_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.equationRGB != gpu_state.equationRGB ||
+                logical_state.equationAlpha != gpu_state.equationAlpha) {
+                
+                glBlendEquation(static_cast<GLenum>(mode));
+                GL_CHECK("set blend equation");
+                
+                gpu_state.equationRGB = logical_state.equationRGB;
+                gpu_state.equationAlpha = logical_state.equationAlpha;
+            }
+        }
+        
+        /**
+         * @brief Sets blend equation separately for RGB and Alpha
+         * @param modeRGB Blend equation for RGB channels
+         * @param modeAlpha Blend equation for Alpha channel
+         */
+        void setEquationSeparate(BlendEquation modeRGB, BlendEquation modeAlpha) {
+            // 1. Get logical state (top of stack)
+            BlendState& logical_state = m_owner->m_stack.back().blend_state;
+            
+            // 2. Update logical state
+            logical_state.equationRGB = modeRGB;
+            logical_state.equationAlpha = modeAlpha;
+            
+            // 3. Get GPU state cache
+            BlendState& gpu_state = m_owner->m_gpu_blend_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.equationRGB != gpu_state.equationRGB ||
+                logical_state.equationAlpha != gpu_state.equationAlpha) {
+                
+                glBlendEquationSeparate(
+                    static_cast<GLenum>(modeRGB),
+                    static_cast<GLenum>(modeAlpha));
+                GL_CHECK("set blend equation separate");
+                
+                gpu_state.equationRGB = logical_state.equationRGB;
+                gpu_state.equationAlpha = logical_state.equationAlpha;
+            }
+        }
+        
+        /**
+         * @brief Sets blend function for both RGB and Alpha
+         * @param sfactor Source blend factor for both RGB and Alpha
+         * @param dfactor Destination blend factor for both RGB and Alpha
+         */
+        void setFunction(BlendFactor sfactor, BlendFactor dfactor) {
+            // 1. Get logical state (top of stack)
+            BlendState& logical_state = m_owner->m_stack.back().blend_state;
+            
+            // 2. Update logical state (all four factors to same RGB/Alpha values)
+            logical_state.sfactorRGB = sfactor;
+            logical_state.dfactorRGB = dfactor;
+            logical_state.sfactorAlpha = sfactor;
+            logical_state.dfactorAlpha = dfactor;
+            
+            // 3. Get GPU state cache
+            BlendState& gpu_state = m_owner->m_gpu_blend_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.sfactorRGB != gpu_state.sfactorRGB ||
+                logical_state.dfactorRGB != gpu_state.dfactorRGB ||
+                logical_state.sfactorAlpha != gpu_state.sfactorAlpha ||
+                logical_state.dfactorAlpha != gpu_state.dfactorAlpha) {
+                
+                glBlendFunc(
+                    static_cast<GLenum>(sfactor),
+                    static_cast<GLenum>(dfactor));
+                GL_CHECK("set blend function");
+                
+                gpu_state.sfactorRGB = logical_state.sfactorRGB;
+                gpu_state.dfactorRGB = logical_state.dfactorRGB;
+                gpu_state.sfactorAlpha = logical_state.sfactorAlpha;
+                gpu_state.dfactorAlpha = logical_state.dfactorAlpha;
+            }
+        }
+        
+        /**
+         * @brief Sets blend function separately for RGB and Alpha
+         * @param srcRGB Source blend factor for RGB channels
+         * @param dstRGB Destination blend factor for RGB channels
+         * @param srcAlpha Source blend factor for Alpha channel
+         * @param dstAlpha Destination blend factor for Alpha channel
+         */
+        void setFunctionSeparate(BlendFactor srcRGB, BlendFactor dstRGB,
+                                 BlendFactor srcAlpha, BlendFactor dstAlpha) {
+            // 1. Get logical state (top of stack)
+            BlendState& logical_state = m_owner->m_stack.back().blend_state;
+            
+            // 2. Update logical state
+            logical_state.sfactorRGB = srcRGB;
+            logical_state.dfactorRGB = dstRGB;
+            logical_state.sfactorAlpha = srcAlpha;
+            logical_state.dfactorAlpha = dstAlpha;
+            
+            // 3. Get GPU state cache
+            BlendState& gpu_state = m_owner->m_gpu_blend_state;
+            
+            // 4. Compare and update if any factor differs
+            if (logical_state.sfactorRGB != gpu_state.sfactorRGB ||
+                logical_state.dfactorRGB != gpu_state.dfactorRGB ||
+                logical_state.sfactorAlpha != gpu_state.sfactorAlpha ||
+                logical_state.dfactorAlpha != gpu_state.dfactorAlpha) {
+                
+                glBlendFuncSeparate(
+                    static_cast<GLenum>(srcRGB),
+                    static_cast<GLenum>(dstRGB),
+                    static_cast<GLenum>(srcAlpha),
+                    static_cast<GLenum>(dstAlpha));
+                GL_CHECK("set blend function separate");
+                
+                gpu_state.sfactorRGB = logical_state.sfactorRGB;
+                gpu_state.dfactorRGB = logical_state.dfactorRGB;
+                gpu_state.sfactorAlpha = logical_state.sfactorAlpha;
+                gpu_state.dfactorAlpha = logical_state.dfactorAlpha;
+            }
+        }
+        
+        /**
+         * @brief Sets blend constant color
+         * @param r Red component (0.0 to 1.0)
+         * @param g Green component (0.0 to 1.0)
+         * @param b Blue component (0.0 to 1.0)
+         * @param a Alpha component (0.0 to 1.0)
+         */
+        void setConstantColor(float r, float g, float b, float a) {
+            // 1. Get logical state (top of stack)
+            BlendState& logical_state = m_owner->m_stack.back().blend_state;
+            
+            // 2. Update logical state
+            logical_state.constant_color_r = r;
+            logical_state.constant_color_g = g;
+            logical_state.constant_color_b = b;
+            logical_state.constant_color_a = a;
+            
+            // 3. Get GPU state cache
+            BlendState& gpu_state = m_owner->m_gpu_blend_state;
+            
+            // 4. Compare and update if any component differs
+            if (logical_state.constant_color_r != gpu_state.constant_color_r ||
+                logical_state.constant_color_g != gpu_state.constant_color_g ||
+                logical_state.constant_color_b != gpu_state.constant_color_b ||
+                logical_state.constant_color_a != gpu_state.constant_color_a) {
+                
+                glBlendColor(r, g, b, a);
+                GL_CHECK("set blend constant color");
+                
+                gpu_state.constant_color_r = logical_state.constant_color_r;
+                gpu_state.constant_color_g = logical_state.constant_color_g;
+                gpu_state.constant_color_b = logical_state.constant_color_b;
+                gpu_state.constant_color_a = logical_state.constant_color_a;
+            }
+        }
+    };
+    
+    /**
+     * @brief Returns BlendManager instance for configuring blend state
+     * @return BlendManager proxy object
+     */
+    BlendManager blend() {
+        return BlendManager(this);
+    }
+    
+    /**
+     * @class DepthManager
+     * @brief Proxy class for configuring depth test state
+     * 
+     * Provides methods to configure depth testing with automatic GPU state caching
+     * to prevent redundant OpenGL calls. All methods update the logical state at the
+     * top of the stack and compare with cached GPU state before issuing OpenGL calls.
+     */
+    class DepthManager {
+    private:
+        FramebufferStack* m_owner;  ///< Pointer to owning FramebufferStack
+        
+    public:
+        /**
+         * @brief Constructs DepthManager with owner pointer
+         * @param owner Pointer to the FramebufferStack instance
+         */
+        explicit DepthManager(FramebufferStack* owner) : m_owner(owner) {}
+        
+        /**
+         * @brief Enables or disables depth testing
+         * @param enabled True to enable depth test, false to disable
+         */
+        void setTest(bool enabled) {
+            // 1. Get logical state (top of stack)
+            DepthState& logical_state = m_owner->m_stack.back().depth_state;
+            
+            // 2. Update logical state
+            logical_state.test_enabled = enabled;
+            
+            // 3. Get GPU state cache
+            DepthState& gpu_state = m_owner->m_gpu_depth_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.test_enabled != gpu_state.test_enabled) {
+                if (enabled) {
+                    glEnable(GL_DEPTH_TEST);
+                } else {
+                    glDisable(GL_DEPTH_TEST);
+                }
+                GL_CHECK("set depth test");
+                gpu_state.test_enabled = logical_state.test_enabled;
+            }
+        }
+        
+        /**
+         * @brief Enables or disables depth buffer writes
+         * @param enabled True to enable depth writes, false to disable
+         */
+        void setWrite(bool enabled) {
+            // 1. Get logical state (top of stack)
+            DepthState& logical_state = m_owner->m_stack.back().depth_state;
+            
+            // 2. Update logical state
+            logical_state.write_enabled = enabled;
+            
+            // 3. Get GPU state cache
+            DepthState& gpu_state = m_owner->m_gpu_depth_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.write_enabled != gpu_state.write_enabled) {
+                glDepthMask(enabled ? GL_TRUE : GL_FALSE);
+                GL_CHECK("set depth write mask");
+                gpu_state.write_enabled = logical_state.write_enabled;
+            }
+        }
+        
+        /**
+         * @brief Sets depth test comparison function
+         * @param func Depth comparison function
+         */
+        void setFunction(DepthFunc func) {
+            // 1. Get logical state (top of stack)
+            DepthState& logical_state = m_owner->m_stack.back().depth_state;
+            
+            // 2. Update logical state
+            logical_state.func = func;
+            
+            // 3. Get GPU state cache
+            DepthState& gpu_state = m_owner->m_gpu_depth_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.func != gpu_state.func) {
+                glDepthFunc(static_cast<GLenum>(func));
+                GL_CHECK("set depth function");
+                gpu_state.func = logical_state.func;
+            }
+        }
+        
+        /**
+         * @brief Enables or disables depth clamping
+         * @param enabled True to enable depth clamping, false to disable
+         */
+        void setClamp(bool enabled) {
+            // 1. Get logical state (top of stack)
+            DepthState& logical_state = m_owner->m_stack.back().depth_state;
+            
+            // 2. Update logical state
+            logical_state.clamp_enabled = enabled;
+            
+            // 3. Get GPU state cache
+            DepthState& gpu_state = m_owner->m_gpu_depth_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.clamp_enabled != gpu_state.clamp_enabled) {
+                if (enabled) {
+                    glEnable(GL_DEPTH_CLAMP);
+                } else {
+                    glDisable(GL_DEPTH_CLAMP);
+                }
+                GL_CHECK("set depth clamp");
+                gpu_state.clamp_enabled = logical_state.clamp_enabled;
+            }
+        }
+        
+        /**
+         * @brief Sets depth range
+         * @param near_val Near depth range value (default: 0.0)
+         * @param far_val Far depth range value (default: 1.0)
+         */
+        void setRange(double near_val, double far_val) {
+            // 1. Get logical state (top of stack)
+            DepthState& logical_state = m_owner->m_stack.back().depth_state;
+            
+            // 2. Update logical state
+            logical_state.range_near = near_val;
+            logical_state.range_far = far_val;
+            
+            // 3. Get GPU state cache
+            DepthState& gpu_state = m_owner->m_gpu_depth_state;
+            
+            // 4. Compare and update if different
+            if (logical_state.range_near != gpu_state.range_near ||
+                logical_state.range_far != gpu_state.range_far) {
+                
+                glDepthRange(near_val, far_val);
+                GL_CHECK("set depth range");
+                
+                gpu_state.range_near = logical_state.range_near;
+                gpu_state.range_far = logical_state.range_far;
+            }
+        }
+    };
+    
+    /**
+     * @brief Returns DepthManager instance for configuring depth state
+     * @return DepthManager proxy object
+     */
+    DepthManager depth() {
+        return DepthManager(this);
+    }
+    
     // Delete copy constructor and assignment operator (singleton)
     FramebufferStack(const FramebufferStack&) = delete;
     FramebufferStack& operator=(const FramebufferStack&) = delete;
     
     /**
-     * @brief Pushes a framebuffer onto the stack and activates it.
-     * @param fbo The framebuffer to push (must not be nullptr)
-     * 
-     * Stores the complete framebuffer state and activates the framebuffer
-     * by binding it, setting the viewport, and configuring draw buffers.
-     * 
-     * Optimizations:
-     * - Only calls glBindFramebuffer if FBO ID changed
-     * - Only calls glViewport if dimensions changed
-     * - Handles depth-only FBOs (GL_NONE for draw buffers)
-     * 
-     * @note This method has side effects (modifies OpenGL state)
+     * @brief Pushes framebuffer with state inheritance (inherit mode)
+     * @param fbo Framebuffer to push onto stack
+     * @note Inherits stencil/blend state from parent, no GL calls for state
+     * @note Optimized: only updates changed FBO/viewport/draw buffers
      */
     void push(FramebufferPtr fbo);
     
     /**
-     * @brief Pops the current framebuffer and restores the previous state.
-     * 
-     * Restores the previous framebuffer, viewport, and draw buffer configuration.
-     * If restoring the default framebuffer, queries GLFW for current window
-     * dimensions to handle window resizing.
-     * 
-     * @note Cannot pop the base state (default framebuffer)
-     * @note Logs a warning if attempting to pop base state
+     * @brief Pushes framebuffer with pre-configured state (apply mode)
+     * @param fbo Framebuffer to push onto stack
+     * @param state_to_apply Pre-configured RenderState to apply atomically
+     * @note Applies RenderState atomically, issues GL calls via syncGpuToState
+     * @note Optimized: only updates state fields that differ from GPU cache
+     */
+    void push(FramebufferPtr fbo, RenderStatePtr state_to_apply);
+    
+    /**
+     * @brief Pops and restores previous framebuffer state
+     * @note Cannot pop base state (default framebuffer)
      */
     void pop();
     
-    /**
-     * @brief Returns the framebuffer at the top of the stack.
-     * @return Shared pointer to the current framebuffer (nullptr if default framebuffer)
-     */
+    /** @brief Returns current framebuffer (nullptr if default) */
     FramebufferPtr top() const {
         return m_stack.back().fbo;
     }
     
-    /**
-     * @brief Checks if the default framebuffer is currently active.
-     * @return True if the default framebuffer (window) is active, false otherwise
-     */
+    /** @brief Checks if default framebuffer is active */
     bool isDefaultFramebuffer() const {
         return m_stack.back().fbo == nullptr;
     }
     
-    /**
-     * @brief Gets the current viewport width.
-     * @return Current viewport width in pixels
-     */
+    /** @brief Gets current viewport width */
     int getCurrentWidth() const {
         return m_current_viewport_width;
     }
     
-    /**
-     * @brief Gets the current viewport height.
-     * @return Current viewport height in pixels
-     */
+    /** @brief Gets current viewport height */
     int getCurrentHeight() const {
         return m_current_viewport_height;
     }
@@ -1386,24 +1892,52 @@ public:
 // FramebufferStack method implementations
 
 inline void FramebufferStack::push(FramebufferPtr fbo) {
-    if (!fbo) {
-        std::cerr << "Warning: Attempting to push null framebuffer to stack." << std::endl;
-        return;
-    }
+    // Get current state for inheritance
+    const FramebufferState& previous_state = m_stack.back();
     
-    // Store current state
+    // Check if pushing default framebuffer
+    bool is_default_fbo = (fbo == nullptr);
+    
+    // Create new state
     FramebufferState state;
     state.fbo = fbo;
-    state.viewport_width = fbo->getWidth();
-    state.viewport_height = fbo->getHeight();
-    state.draw_buffers = fbo->m_color_attachments;  // Access via friend
+    
+    // Set viewport and draw buffers based on FBO type
+    if (is_default_fbo) {
+        // Query window size from GLFW for default framebuffer
+        GLFWwindow* window = glfwGetCurrentContext();
+        int window_width, window_height;
+        glfwGetFramebufferSize(window, &window_width, &window_height);
+        
+        state.viewport_width = window_width;
+        state.viewport_height = window_height;
+        state.draw_buffers = { GL_BACK };
+    } else {
+        // Use FBO dimensions and color attachments
+        state.viewport_width = fbo->getWidth();
+        state.viewport_height = fbo->getHeight();
+        state.draw_buffers = fbo->m_color_attachments;  // Access via friend
+    }
+    
+    // Inherit stencil, blend, and depth state from parent (no GL calls)
+    state.stencil_state = previous_state.stencil_state;
+    state.blend_state = previous_state.blend_state;
+    state.depth_state = previous_state.depth_state;
     
     m_stack.push_back(state);
     
+    // Determine target FBO ID
+    GLuint target_fbo_id = is_default_fbo ? 0 : fbo->getID();
+    
     // Bind FBO (with optimization - only bind if changed)
-    if (m_currently_bound_fbo != fbo->getID()) {
-        fbo->bind();
-        m_currently_bound_fbo = fbo->getID();
+    if (m_currently_bound_fbo != target_fbo_id) {
+        if (is_default_fbo) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            GL_CHECK("bind default framebuffer");
+        } else {
+            fbo->bind();
+        }
+        m_currently_bound_fbo = target_fbo_id;
     }
     
     // Set viewport (with optimization - only update if dimensions changed)
@@ -1416,7 +1950,10 @@ inline void FramebufferStack::push(FramebufferPtr fbo) {
     }
     
     // Configure draw buffers
-    if (state.draw_buffers.empty()) {
+    if (is_default_fbo) {
+        glDrawBuffer(GL_BACK);
+        GL_CHECK("set default draw buffer");
+    } else if (state.draw_buffers.empty()) {
         // Depth-only FBO (e.g., shadow map)
         glDrawBuffer(GL_NONE);
         GL_CHECK("set draw buffer to none");
@@ -1425,6 +1962,86 @@ inline void FramebufferStack::push(FramebufferPtr fbo) {
         glDrawBuffers(static_cast<GLsizei>(state.draw_buffers.size()), state.draw_buffers.data());
         GL_CHECK("set draw buffers");
     }
+    
+    // CRITICAL: Do NOT call syncGpuToState() in inherit mode
+    // State is logically identical to previous level, no GPU state changes needed
+}
+
+inline void FramebufferStack::push(FramebufferPtr fbo, RenderStatePtr state_to_apply) {
+    if (!state_to_apply) {
+        throw exception::FramebufferException("Attempted to push a null RenderStatePtr to the FramebufferStack. Use the push(fbo) overload for state inheritance.");
+    }
+    
+    // Check if pushing default framebuffer
+    bool is_default_fbo = (fbo == nullptr);
+    
+    // Create new state
+    FramebufferState state;
+    state.fbo = fbo;
+    
+    // Set viewport and draw buffers based on FBO type
+    if (is_default_fbo) {
+        // Query window size from GLFW for default framebuffer
+        GLFWwindow* window = glfwGetCurrentContext();
+        int window_width, window_height;
+        glfwGetFramebufferSize(window, &window_width, &window_height);
+        
+        state.viewport_width = window_width;
+        state.viewport_height = window_height;
+        state.draw_buffers = { GL_BACK };
+    } else {
+        // Use FBO dimensions and color attachments
+        state.viewport_width = fbo->getWidth();
+        state.viewport_height = fbo->getHeight();
+        state.draw_buffers = fbo->m_color_attachments;  // Access via friend
+    }
+    
+    // Apply pre-configured state (access via friend)
+    state.stencil_state = state_to_apply->m_stencil_state;
+    state.blend_state = state_to_apply->m_blend_state;
+    state.depth_state = state_to_apply->m_depth_state;
+    
+    m_stack.push_back(state);
+    
+    // Determine target FBO ID
+    GLuint target_fbo_id = is_default_fbo ? 0 : fbo->getID();
+    
+    // Bind FBO (with optimization - only bind if changed)
+    if (m_currently_bound_fbo != target_fbo_id) {
+        if (is_default_fbo) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            GL_CHECK("bind default framebuffer");
+        } else {
+            fbo->bind();
+        }
+        m_currently_bound_fbo = target_fbo_id;
+    }
+    
+    // Set viewport (with optimization - only update if dimensions changed)
+    if (m_current_viewport_width != state.viewport_width || 
+        m_current_viewport_height != state.viewport_height) {
+        glViewport(0, 0, state.viewport_width, state.viewport_height);
+        GL_CHECK("set framebuffer viewport");
+        m_current_viewport_width = state.viewport_width;
+        m_current_viewport_height = state.viewport_height;
+    }
+    
+    // Configure draw buffers
+    if (is_default_fbo) {
+        glDrawBuffer(GL_BACK);
+        GL_CHECK("set default draw buffer");
+    } else if (state.draw_buffers.empty()) {
+        // Depth-only FBO (e.g., shadow map)
+        glDrawBuffer(GL_NONE);
+        GL_CHECK("set draw buffer to none");
+    } else {
+        // Color attachments present
+        glDrawBuffers(static_cast<GLsizei>(state.draw_buffers.size()), state.draw_buffers.data());
+        GL_CHECK("set draw buffers");
+    }
+    
+    // CRITICAL: Call syncGpuToState() to apply the new state atomically
+    syncGpuToState(m_stack.back());
 }
 
 inline void FramebufferStack::pop() {
@@ -1482,22 +2099,183 @@ inline void FramebufferStack::pop() {
             GL_CHECK("restore draw buffers");
         }
     }
+    
+    // Restore stencil and blend state
+    syncGpuToState(state_to_restore);
+}
+
+inline void FramebufferStack::syncGpuToState(const FramebufferState& target_state) {
+    // ========== Sync Stencil State ==========
+    const StencilState& target_stencil = target_state.stencil_state;
+    
+    // Compare and sync stencil test enabled/disabled
+    if (target_stencil.enabled != m_gpu_stencil_state.enabled) {
+        if (target_stencil.enabled) {
+            glEnable(GL_STENCIL_TEST);
+        } else {
+            glDisable(GL_STENCIL_TEST);
+        }
+        GL_CHECK("sync stencil test");
+        m_gpu_stencil_state.enabled = target_stencil.enabled;
+    }
+    
+    // Compare and sync stencil write mask
+    if (target_stencil.write_mask != m_gpu_stencil_state.write_mask) {
+        glStencilMask(target_stencil.write_mask);
+        GL_CHECK("sync stencil write mask");
+        m_gpu_stencil_state.write_mask = target_stencil.write_mask;
+    }
+    
+    // Compare and sync stencil function (func, ref, func_mask)
+    if (target_stencil.func != m_gpu_stencil_state.func ||
+        target_stencil.ref != m_gpu_stencil_state.ref ||
+        target_stencil.func_mask != m_gpu_stencil_state.func_mask) {
+        
+        glStencilFunc(
+            static_cast<GLenum>(target_stencil.func),
+            target_stencil.ref,
+            target_stencil.func_mask);
+        GL_CHECK("sync stencil function");
+        
+        m_gpu_stencil_state.func = target_stencil.func;
+        m_gpu_stencil_state.ref = target_stencil.ref;
+        m_gpu_stencil_state.func_mask = target_stencil.func_mask;
+    }
+    
+    // Compare and sync stencil operations (sfail, dpfail, dppass)
+    if (target_stencil.sfail != m_gpu_stencil_state.sfail ||
+        target_stencil.dpfail != m_gpu_stencil_state.dpfail ||
+        target_stencil.dppass != m_gpu_stencil_state.dppass) {
+        
+        glStencilOp(
+            static_cast<GLenum>(target_stencil.sfail),
+            static_cast<GLenum>(target_stencil.dpfail),
+            static_cast<GLenum>(target_stencil.dppass));
+        GL_CHECK("sync stencil operation");
+        
+        m_gpu_stencil_state.sfail = target_stencil.sfail;
+        m_gpu_stencil_state.dpfail = target_stencil.dpfail;
+        m_gpu_stencil_state.dppass = target_stencil.dppass;
+    }
+    
+    // ========== Sync Blend State ==========
+    const BlendState& target_blend = target_state.blend_state;
+    
+    // Compare and sync blend enabled/disabled
+    if (target_blend.enabled != m_gpu_blend_state.enabled) {
+        if (target_blend.enabled) {
+            glEnable(GL_BLEND);
+        } else {
+            glDisable(GL_BLEND);
+        }
+        GL_CHECK("sync blend");
+        m_gpu_blend_state.enabled = target_blend.enabled;
+    }
+    
+    // Compare and sync blend equations (RGB and Alpha)
+    if (target_blend.equationRGB != m_gpu_blend_state.equationRGB ||
+        target_blend.equationAlpha != m_gpu_blend_state.equationAlpha) {
+        
+        glBlendEquationSeparate(
+            static_cast<GLenum>(target_blend.equationRGB),
+            static_cast<GLenum>(target_blend.equationAlpha));
+        GL_CHECK("sync blend equation");
+        
+        m_gpu_blend_state.equationRGB = target_blend.equationRGB;
+        m_gpu_blend_state.equationAlpha = target_blend.equationAlpha;
+    }
+    
+    // Compare and sync blend factors (source and destination, RGB and Alpha)
+    if (target_blend.sfactorRGB != m_gpu_blend_state.sfactorRGB ||
+        target_blend.dfactorRGB != m_gpu_blend_state.dfactorRGB ||
+        target_blend.sfactorAlpha != m_gpu_blend_state.sfactorAlpha ||
+        target_blend.dfactorAlpha != m_gpu_blend_state.dfactorAlpha) {
+        
+        glBlendFuncSeparate(
+            static_cast<GLenum>(target_blend.sfactorRGB),
+            static_cast<GLenum>(target_blend.dfactorRGB),
+            static_cast<GLenum>(target_blend.sfactorAlpha),
+            static_cast<GLenum>(target_blend.dfactorAlpha));
+        GL_CHECK("sync blend function");
+        
+        m_gpu_blend_state.sfactorRGB = target_blend.sfactorRGB;
+        m_gpu_blend_state.dfactorRGB = target_blend.dfactorRGB;
+        m_gpu_blend_state.sfactorAlpha = target_blend.sfactorAlpha;
+        m_gpu_blend_state.dfactorAlpha = target_blend.dfactorAlpha;
+    }
+    
+    // Compare and sync blend constant color
+    if (target_blend.constant_color_r != m_gpu_blend_state.constant_color_r ||
+        target_blend.constant_color_g != m_gpu_blend_state.constant_color_g ||
+        target_blend.constant_color_b != m_gpu_blend_state.constant_color_b ||
+        target_blend.constant_color_a != m_gpu_blend_state.constant_color_a) {
+        
+        glBlendColor(
+            target_blend.constant_color_r,
+            target_blend.constant_color_g,
+            target_blend.constant_color_b,
+            target_blend.constant_color_a);
+        GL_CHECK("sync blend constant color");
+        
+        m_gpu_blend_state.constant_color_r = target_blend.constant_color_r;
+        m_gpu_blend_state.constant_color_g = target_blend.constant_color_g;
+        m_gpu_blend_state.constant_color_b = target_blend.constant_color_b;
+        m_gpu_blend_state.constant_color_a = target_blend.constant_color_a;
+    }
+    
+    // ========== Sync Depth State ==========
+    const DepthState& target_depth = target_state.depth_state;
+    
+    // Compare and sync depth test enabled/disabled
+    if (target_depth.test_enabled != m_gpu_depth_state.test_enabled) {
+        if (target_depth.test_enabled) {
+            glEnable(GL_DEPTH_TEST);
+        } else {
+            glDisable(GL_DEPTH_TEST);
+        }
+        GL_CHECK("sync depth test");
+        m_gpu_depth_state.test_enabled = target_depth.test_enabled;
+    }
+    
+    // Compare and sync depth write mask
+    if (target_depth.write_enabled != m_gpu_depth_state.write_enabled) {
+        glDepthMask(target_depth.write_enabled ? GL_TRUE : GL_FALSE);
+        GL_CHECK("sync depth write mask");
+        m_gpu_depth_state.write_enabled = target_depth.write_enabled;
+    }
+    
+    // Compare and sync depth function
+    if (target_depth.func != m_gpu_depth_state.func) {
+        glDepthFunc(static_cast<GLenum>(target_depth.func));
+        GL_CHECK("sync depth function");
+        m_gpu_depth_state.func = target_depth.func;
+    }
+    
+    // Compare and sync depth clamp enabled/disabled
+    if (target_depth.clamp_enabled != m_gpu_depth_state.clamp_enabled) {
+        if (target_depth.clamp_enabled) {
+            glEnable(GL_DEPTH_CLAMP);
+        } else {
+            glDisable(GL_DEPTH_CLAMP);
+        }
+        GL_CHECK("sync depth clamp");
+        m_gpu_depth_state.clamp_enabled = target_depth.clamp_enabled;
+    }
+    
+    // Compare and sync depth range
+    if (target_depth.range_near != m_gpu_depth_state.range_near ||
+        target_depth.range_far != m_gpu_depth_state.range_far) {
+        
+        glDepthRange(target_depth.range_near, target_depth.range_far);
+        GL_CHECK("sync depth range");
+        
+        m_gpu_depth_state.range_near = target_depth.range_near;
+        m_gpu_depth_state.range_far = target_depth.range_far;
+    }
 }
 
 /**
- * @brief Singleton accessor for the FramebufferStack.
- * @return Shared pointer to the global FramebufferStack instance
- * 
- * Uses Meyers singleton pattern for thread-safe initialization.
- * The stack is initialized with a base state representing the default
- * framebuffer (window).
- * 
- * @code
- * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene");
- * framebuffer::stack()->push(fbo);
- * // ... render to FBO ...
- * framebuffer::stack()->pop();
- * @endcode
+ * @brief Singleton accessor for FramebufferStack (Meyers pattern)
  */
 inline FramebufferStackPtr stack() {
     static FramebufferStackPtr instance = FramebufferStackPtr(new FramebufferStack());

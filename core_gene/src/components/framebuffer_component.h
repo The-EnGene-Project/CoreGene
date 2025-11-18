@@ -61,28 +61,47 @@ using FramebufferComponentPtr = std::shared_ptr<FramebufferComponent>;
 class FramebufferComponent : virtual public Component {
 private:
     framebuffer::FramebufferPtr m_fbo;
+    framebuffer::RenderStatePtr m_render_state;  ///< Optional pre-configured render state
     
 protected:
     /**
-     * @brief Protected constructor for factory methods.
+     * @brief Protected constructor for factory methods (inherit mode).
      * @param fbo The framebuffer to manage
      * 
      * Initializes the component with priority 150, positioning it between
      * Transform (100) and Shader (200) in the execution order.
+     * Sets m_render_state to nullptr, enabling inherit mode push.
      */
     FramebufferComponent(framebuffer::FramebufferPtr fbo) :
         Component(150),  // Priority 150: after Transform, before Shader
-        m_fbo(fbo)
+        m_fbo(fbo),
+        m_render_state(nullptr)
+    {}
+    
+    /**
+     * @brief Protected constructor for factory methods (apply mode).
+     * @param fbo The framebuffer to manage
+     * @param state Pre-configured render state to apply atomically
+     * 
+     * Initializes the component with priority 150, positioning it between
+     * Transform (100) and Shader (200) in the execution order.
+     * Sets m_render_state, enabling apply mode push.
+     */
+    FramebufferComponent(framebuffer::FramebufferPtr fbo, framebuffer::RenderStatePtr state) :
+        Component(150),  // Priority 150: after Transform, before Shader
+        m_fbo(fbo),
+        m_render_state(state)
     {}
 
 public:
     /**
-     * @brief Factory method to create a FramebufferComponent.
+     * @brief Factory method to create a FramebufferComponent (inherit mode).
      * @param fbo The framebuffer to manage
      * @return Shared pointer to the created component
      * 
      * Creates a FramebufferComponent that will manage the given framebuffer's
-     * lifecycle within the scene graph.
+     * lifecycle within the scene graph. Uses inherit mode: stencil and blend
+     * state are inherited from the parent framebuffer level.
      * 
      * @code
      * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "color");
@@ -94,13 +113,14 @@ public:
     }
 
     /**
-     * @brief Factory method to create a named FramebufferComponent.
+     * @brief Factory method to create a named FramebufferComponent (inherit mode).
      * @param fbo The framebuffer to manage
      * @param name The name for this component instance
      * @return Shared pointer to the created component
      * 
      * Creates a named FramebufferComponent, allowing retrieval by name from
-     * the component collection.
+     * the component collection. Uses inherit mode: stencil and blend state
+     * are inherited from the parent framebuffer level.
      * 
      * @code
      * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "color");
@@ -115,16 +135,75 @@ public:
     }
     
     /**
+     * @brief Factory method to create a FramebufferComponent with RenderState (apply mode).
+     * @param fbo The framebuffer to manage
+     * @param state Pre-configured render state to apply atomically
+     * @return Shared pointer to the created component
+     * 
+     * Creates a FramebufferComponent that will manage the given framebuffer's
+     * lifecycle within the scene graph. Uses apply mode: the provided RenderState
+     * is applied atomically when the framebuffer is pushed, overriding parent state.
+     * 
+     * @code
+     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "color");
+     * auto state = std::make_shared<framebuffer::RenderState>();
+     * state->stencil().setTest(true);
+     * state->blend().setEnabled(true);
+     * auto comp = component::FramebufferComponent::Make(fbo, state);
+     * @endcode
+     */
+    static FramebufferComponentPtr Make(framebuffer::FramebufferPtr fbo, framebuffer::RenderStatePtr state) {
+        return FramebufferComponentPtr(new FramebufferComponent(fbo, state));
+    }
+    
+    /**
+     * @brief Factory method to create a named FramebufferComponent with RenderState (apply mode).
+     * @param fbo The framebuffer to manage
+     * @param state Pre-configured render state to apply atomically
+     * @param name The name for this component instance
+     * @return Shared pointer to the created component
+     * 
+     * Creates a named FramebufferComponent with pre-configured render state.
+     * Uses apply mode: the provided RenderState is applied atomically when
+     * the framebuffer is pushed, overriding parent state.
+     * 
+     * @code
+     * auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "color");
+     * auto state = std::make_shared<framebuffer::RenderState>();
+     * state->stencil().setTest(true);
+     * auto comp = component::FramebufferComponent::Make(fbo, state, "stencil_fbo");
+     * @endcode
+     */
+    static FramebufferComponentPtr Make(framebuffer::FramebufferPtr fbo, framebuffer::RenderStatePtr state, const std::string& name) {
+        auto comp = FramebufferComponentPtr(new FramebufferComponent(fbo, state));
+        comp->setName(name);
+        return comp;
+    }
+    
+    /**
      * @brief Applies the component by pushing the framebuffer onto the stack.
      * 
      * Called during scene traversal when entering this node. Pushes the
      * framebuffer onto the framebuffer stack, redirecting all subsequent
      * rendering to the FBO until unapply() is called.
      * 
+     * If m_render_state is null (inherit mode), the framebuffer inherits
+     * stencil and blend state from the parent level without issuing OpenGL calls.
+     * 
+     * If m_render_state is not null (apply mode), the pre-configured state
+     * is applied atomically, issuing OpenGL calls only for state fields that
+     * differ from the cached GPU state.
+     * 
      * @note This method has side effects (modifies OpenGL state via stack)
      */
     virtual void apply() override {
-        framebuffer::stack()->push(m_fbo);
+        if (m_render_state == nullptr) {
+            // Inherit mode: inherit parent state, no GL calls
+            framebuffer::stack()->push(m_fbo);
+        } else {
+            // Apply mode: apply pre-configured state atomically
+            framebuffer::stack()->push(m_fbo, m_render_state);
+        }
     }
 
     /**
@@ -197,6 +276,53 @@ public:
      */
     void setFramebuffer(framebuffer::FramebufferPtr fbo) {
         m_fbo = fbo;
+    }
+    
+    /**
+     * @brief Gets the current render state (may be null).
+     * @return Shared pointer to the render state, or nullptr if using inherit mode
+     * 
+     * Returns the pre-configured render state if this component is using apply mode,
+     * or nullptr if using inherit mode.
+     * 
+     * @code
+     * auto fbo_comp = node->getPayload().get<FramebufferComponent>();
+     * auto state = fbo_comp->getRenderState();
+     * if (state) {
+     *     // Component is using apply mode
+     * } else {
+     *     // Component is using inherit mode
+     * }
+     * @endcode
+     */
+    framebuffer::RenderStatePtr getRenderState() const {
+        return m_render_state;
+    }
+    
+    /**
+     * @brief Sets a new render state for this component.
+     * @param state The new render state to apply, or nullptr for inherit mode
+     * 
+     * Replaces the currently configured render state. Set to nullptr to switch
+     * to inherit mode, or provide a RenderState to switch to apply mode.
+     * 
+     * @note If the component is currently applied (framebuffer is on the stack),
+     *       this will not affect the stack until the next apply() call.
+     * 
+     * @code
+     * auto fbo_comp = node->getPayload().get<FramebufferComponent>();
+     * 
+     * // Switch to apply mode with custom state
+     * auto state = std::make_shared<framebuffer::RenderState>();
+     * state->blend().setEnabled(true);
+     * fbo_comp->setRenderState(state);
+     * 
+     * // Switch back to inherit mode
+     * fbo_comp->setRenderState(nullptr);
+     * @endcode
+     */
+    void setRenderState(framebuffer::RenderStatePtr state) {
+        m_render_state = state;
     }
 };
 

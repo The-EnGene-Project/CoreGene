@@ -32,6 +32,8 @@ EnGene is a modular, declarative C++ OpenGL abstraction library for developers w
     - [MaterialStack](#materialstack)
     - [Texture](#texture)
     - [TextureStack](#texturestack)
+    - [Framebuffer](#framebuffer)
+    - [FramebufferStack](#framebufferstack)
   - [Lighting System](#lighting-system)
     - [Light Types](#light-types)
     - [LightManager](#lightmanager)
@@ -1191,6 +1193,516 @@ texture::stack()->pop();  // Removes specular
 texture::stack()->pop();  // Removes normal
 texture::stack()->pop();  // Removes diffuse
 ```
+
+
+#### Framebuffer
+
+RAII-compliant abstraction for OpenGL Framebuffer Objects, enabling off-screen rendering for post-processing, shadow mapping, reflections, and deferred shading.
+
+**Creation:**
+
+EnGene provides factory methods for common framebuffer configurations:
+
+```cpp
+// Render-to-texture (color texture + depth renderbuffer)
+auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
+
+// Post-processing (color texture + depth renderbuffer)
+auto post_fbo = framebuffer::Framebuffer::MakePostProcessing(800, 600, "post_color");
+
+// Shadow mapping (depth texture only)
+auto shadow_fbo = framebuffer::Framebuffer::MakeShadowMap(1024, 1024, "shadow_depth");
+
+// G-Buffer for deferred shading (multiple color textures + depth)
+auto gbuffer = framebuffer::Framebuffer::MakeGBuffer(800, 600, {
+    "g_position",
+    "g_normal",
+    "g_albedo",
+    "g_specular"
+});
+
+// Custom configuration
+auto custom_fbo = framebuffer::Framebuffer::Make(800, 600, {
+    framebuffer::Framebuffer::AttachmentSpec(
+        framebuffer::attachment::Point::Color0,
+        framebuffer::attachment::Format::RGBA16F,
+        framebuffer::attachment::StorageType::Texture,
+        "hdr_color"),
+    framebuffer::Framebuffer::AttachmentSpec(
+        framebuffer::attachment::Point::Depth,
+        framebuffer::attachment::Format::DepthComponent24)
+});
+```
+
+**Key Methods:**
+```cpp
+texture::TexturePtr getTexture(const std::string& name);  // Get texture by name
+bool hasTexture(const std::string& name);                 // Check if texture exists
+void generateMipmaps(const std::string& textureName);     // Generate mipmaps
+void attachToShader(ShaderPtr shader, 
+                    const std::unordered_map<std::string, std::string>& map);
+void setClearOnBind(bool clear);                          // Auto-clear on bind
+int getWidth() const;
+int getHeight() const;
+```
+
+**Basic Render-to-Texture Example:**
+```cpp
+// Create FBO with color texture and depth renderbuffer
+auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
+
+// Render scene to FBO
+framebuffer::stack()->push(fbo);
+scene::graph()->draw();
+framebuffer::stack()->pop();
+
+// Use FBO texture in next pass
+auto scene_texture = fbo->getTexture("scene_color");
+texture::stack()->push(scene_texture, 0);
+// ... render fullscreen quad with texture ...
+texture::stack()->pop();
+```
+
+**Post-Processing Pipeline Example:**
+```cpp
+// Create post-processing FBO
+auto post_fbo = framebuffer::Framebuffer::MakePostProcessing(800, 600, "post_color");
+
+// Render scene to FBO
+framebuffer::stack()->push(post_fbo);
+scene::graph()->draw();
+framebuffer::stack()->pop();
+
+// Apply post-processing effect
+auto shader = shader::Shader::Make("post_process.vert", "blur.frag");
+post_fbo->attachToShader(shader, {{"post_color", "u_scene_texture"}});
+
+shader::stack()->push(shader);
+texture::stack()->registerSamplerUnit("u_scene_texture", 0);
+texture::stack()->push(post_fbo->getTexture("post_color"), 0);
+// ... render fullscreen quad ...
+texture::stack()->pop();
+shader::stack()->pop();
+```
+
+**Shadow Mapping Example:**
+```cpp
+// Create shadow map FBO (depth-only)
+auto shadow_fbo = framebuffer::Framebuffer::MakeShadowMap(1024, 1024, "shadow_depth");
+
+// Render from light's perspective
+framebuffer::stack()->push(shadow_fbo);
+// ... render scene with depth-only shader ...
+framebuffer::stack()->pop();
+
+// Use shadow map in main rendering pass
+auto shadow_texture = shadow_fbo->getTexture("shadow_depth");
+texture::stack()->push(shadow_texture, 1);  // Bind to texture unit 1
+// ... render scene with shadow comparison ...
+texture::stack()->pop();
+```
+
+**Deferred Shading (G-Buffer) Example:**
+```cpp
+// Create G-Buffer with multiple render targets
+auto gbuffer = framebuffer::Framebuffer::MakeGBuffer(800, 600, {
+    "g_position",
+    "g_normal",
+    "g_albedo",
+    "g_specular"
+});
+
+// Geometry pass: render to G-Buffer
+framebuffer::stack()->push(gbuffer);
+// ... render scene with MRT shader ...
+framebuffer::stack()->pop();
+
+// Lighting pass: read from G-Buffer
+auto lighting_shader = shader::Shader::Make("lighting.vert", "lighting.frag");
+gbuffer->attachToShader(lighting_shader, {
+    {"g_position", "u_position"},
+    {"g_normal", "u_normal"},
+    {"g_albedo", "u_albedo"},
+    {"g_specular", "u_specular"}
+});
+
+shader::stack()->push(lighting_shader);
+texture::stack()->registerSamplerUnit("u_position", 0);
+texture::stack()->registerSamplerUnit("u_normal", 1);
+texture::stack()->registerSamplerUnit("u_albedo", 2);
+texture::stack()->registerSamplerUnit("u_specular", 3);
+texture::stack()->push(gbuffer->getTexture("g_position"), 0);
+texture::stack()->push(gbuffer->getTexture("g_normal"), 1);
+texture::stack()->push(gbuffer->getTexture("g_albedo"), 2);
+texture::stack()->push(gbuffer->getTexture("g_specular"), 3);
+// ... render fullscreen quad with lighting calculations ...
+texture::stack()->pop();
+texture::stack()->pop();
+texture::stack()->pop();
+texture::stack()->pop();
+shader::stack()->pop();
+```
+
+**Scene Graph Integration Example:**
+```cpp
+// Create FBO and attach to scene node
+auto fbo = framebuffer::Framebuffer::MakeRenderToTexture(800, 600, "scene_color");
+
+scene::graph()->addNode("offscreen_render")
+    .with<component::FramebufferComponent>(fbo)
+    .with<component::ShaderComponent>(shader)
+    .addNode("cube")
+        .with<component::GeometryComponent>(cube_geometry);
+
+// Framebuffer is automatically pushed/popped during scene traversal
+scene::graph()->draw();
+
+// Retrieve texture for use in another pass
+auto fbo_comp = scene::graph()->findNode("offscreen_render")
+                    ->payload().get<component::FramebufferComponent>();
+auto texture = fbo_comp->getTexture("scene_color");
+```
+
+**Attachment Configuration:**
+
+Framebuffers support flexible attachment configuration via `AttachmentSpec`:
+
+```cpp
+framebuffer::Framebuffer::AttachmentSpec(
+    attachment::Point point,           // Color0-7, Depth, Stencil, DepthStencil
+    attachment::Format format,         // RGBA8, RGBA16F, DepthComponent24, etc.
+    attachment::StorageType storage,   // Texture or Renderbuffer
+    const std::string& name,           // Name for texture retrieval (empty for renderbuffers)
+    attachment::TextureFilter filter,  // Nearest or Linear (default: Linear)
+    attachment::TextureWrap wrap,      // ClampToEdge, ClampToBorder, Repeat (default: ClampToEdge)
+    bool is_shadow                     // Enable shadow comparison mode (default: false)
+);
+```
+
+**Attachment Points:**
+- `Color0` through `Color7` - Up to 8 color attachments (MRT)
+- `Depth` - Depth attachment
+- `Stencil` - Stencil attachment
+- `DepthStencil` - Combined depth-stencil attachment
+
+**Attachment Formats:**
+- **LDR Color:** `RGBA8`, `RGB8`
+- **HDR Color:** `RGBA16F`, `RGBA32F`, `RGB16F`, `RGB32F`
+- **Integer:** `R32I`, `R32UI`, `RG32UI`
+- **Depth:** `DepthComponent16`, `DepthComponent24`, `DepthComponent32`, `DepthComponent32F`
+- **Stencil:** `StencilIndex8`
+- **Combined:** `Depth24Stencil8`
+
+**Storage Types:**
+- **Texture** - Readable by shaders (use for multi-pass rendering)
+- **Renderbuffer** - Write-only, optimized for rendering (use when texture not needed)
+
+**Important Notes:**
+- Only texture attachments can be retrieved by name
+- Renderbuffer attachments are write-only and not accessible
+- Framebuffers automatically clear on bind (disable with `setClearOnBind(false)`)
+- Maximum 8 color attachments (OpenGL 4.3 guarantee)
+- Shadow textures automatically enable depth comparison mode
+
+
+#### FramebufferStack
+
+Singleton managing hierarchical framebuffer state with automatic viewport and draw buffer configuration.
+
+**Access:**
+```cpp
+framebuffer::stack()  // Returns pointer to singleton instance
+```
+
+**Key Methods:**
+```cpp
+void push(FramebufferPtr fbo);  // Bind FBO, set viewport, configure draw buffers
+void pop();                     // Restore previous framebuffer state
+FramebufferPtr top() const;     // Get current framebuffer
+bool isDefaultFramebuffer() const;
+int getCurrentWidth() const;
+int getCurrentHeight() const;
+```
+
+**Important Considerations:**
+
+- **Complete State Management:** Manages FBO binding, viewport dimensions, and draw buffer configuration
+- **GPU State Tracking:** Prevents redundant `glBindFramebuffer()` and `glViewport()` calls
+- **Automatic Viewport:** Sets viewport to match framebuffer dimensions
+- **Draw Buffer Configuration:** Automatically configures `glDrawBuffers()` for MRT
+- **Window Resize Handling:** Queries GLFW for current window size when restoring default framebuffer
+- **Protected Base:** Cannot pop below the default framebuffer (window)
+
+**Example:**
+```cpp
+// Push custom framebuffer
+framebuffer::stack()->push(fbo);
+// Viewport automatically set to FBO dimensions
+// Draw buffers automatically configured
+
+// Render to FBO
+scene::graph()->draw();
+
+// Restore previous framebuffer
+framebuffer::stack()->pop();
+// Viewport and draw buffers automatically restored
+```
+
+**Optimization Features:**
+- Only calls `glBindFramebuffer()` if FBO ID changed
+- Only calls `glViewport()` if dimensions changed
+- Intelligently restores only changed state on `pop()`
+- Handles depth-only FBOs (sets `GL_NONE` for draw buffers)
+
+
+#### Framebuffer State Management
+
+EnGene provides comprehensive stencil and blend state management integrated with the framebuffer stack, enabling hierarchical state inheritance and efficient GPU state caching.
+
+**Type-Safe Enums**
+
+All stencil and blend operations use type-safe enums instead of raw OpenGL constants:
+
+```cpp
+// Stencil enums
+framebuffer::StencilFunc::Never, Less, LEqual, Greater, GEqual, Equal, NotEqual, Always
+framebuffer::StencilOp::Keep, Zero, Replace, Increment, IncrementWrap, Decrement, DecrementWrap, Invert
+
+// Blend enums
+framebuffer::BlendFactor::Zero, One, SrcColor, OneMinusSrcColor, DstColor, OneMinusDstColor,
+                          SrcAlpha, OneMinusSrcAlpha, DstAlpha, OneMinusDstAlpha,
+                          ConstantColor, OneMinusConstantColor, ConstantAlpha, OneMinusConstantAlpha,
+                          SrcAlphaSaturate
+framebuffer::BlendEquation::Add, Subtract, ReverseSubtract, Min, Max
+```
+
+**Live State Modification**
+
+Modify stencil and blend state directly on the active framebuffer using manager proxies:
+
+```cpp
+// Enable and configure stencil testing
+framebuffer::stack()->stencil().setTest(true);
+framebuffer::stack()->stencil().setFunction(
+    framebuffer::StencilFunc::Equal, 1, 0xFF);
+framebuffer::stack()->stencil().setOperation(
+    framebuffer::StencilOp::Keep,
+    framebuffer::StencilOp::Keep,
+    framebuffer::StencilOp::Replace);
+framebuffer::stack()->stencil().setWriteMask(0xFF);
+
+// Enable and configure blending
+framebuffer::stack()->blend().setEnabled(true);
+framebuffer::stack()->blend().setFunction(
+    framebuffer::BlendFactor::SrcAlpha,
+    framebuffer::BlendFactor::OneMinusSrcAlpha);
+framebuffer::stack()->blend().setEquation(framebuffer::BlendEquation::Add);
+framebuffer::stack()->blend().setConstantColor(1.0f, 1.0f, 1.0f, 0.5f);
+```
+
+**Offline State Configuration**
+
+Pre-configure stencil and blend state without issuing OpenGL calls using `RenderState`:
+
+```cpp
+// Create and configure state offline (no GL calls)
+auto render_state = std::make_shared<framebuffer::RenderState>();
+
+// Configure stencil
+render_state->stencil().setTest(true);
+render_state->stencil().setFunction(
+    framebuffer::StencilFunc::Equal, 1, 0xFF);
+render_state->stencil().setOperation(
+    framebuffer::StencilOp::Keep,
+    framebuffer::StencilOp::Keep,
+    framebuffer::StencilOp::Replace);
+
+// Configure blend
+render_state->blend().setEnabled(true);
+render_state->blend().setFunctionSeparate(
+    framebuffer::BlendFactor::SrcAlpha,
+    framebuffer::BlendFactor::OneMinusSrcAlpha,
+    framebuffer::BlendFactor::One,
+    framebuffer::BlendFactor::Zero);
+
+// Apply state atomically when pushing framebuffer
+framebuffer::stack()->push(fbo, render_state);
+```
+
+**Dual-Mode Push Operations**
+
+The framebuffer stack supports two push modes:
+
+1. **Inherit Mode** - Inherits parent state (no GL calls on push)
+```cpp
+framebuffer::stack()->push(fbo);  // Inherits stencil/blend from parent
+// State is logically identical to previous level
+// Modify state after push if needed:
+framebuffer::stack()->stencil().setTest(true);
+```
+
+2. **Apply Mode** - Applies pre-configured state atomically
+```cpp
+auto state = std::make_shared<framebuffer::RenderState>();
+state->stencil().setTest(true);
+state->blend().setEnabled(true);
+
+framebuffer::stack()->push(fbo, state);  // Applies state atomically
+// State is set immediately via syncGpuToState()
+```
+
+**Hierarchical State Inheritance Example**
+
+```cpp
+// Root level: Enable blending
+framebuffer::stack()->blend().setEnabled(true);
+framebuffer::stack()->blend().setFunction(
+    framebuffer::BlendFactor::SrcAlpha,
+    framebuffer::BlendFactor::OneMinusSrcAlpha);
+
+// Push child FBO (inherits blend state)
+framebuffer::stack()->push(child_fbo);
+// Blend is still enabled here (inherited)
+
+// Modify state for this level
+framebuffer::stack()->stencil().setTest(true);
+framebuffer::stack()->stencil().setFunction(
+    framebuffer::StencilFunc::Always, 1, 0xFF);
+
+// Render to child FBO with both blend and stencil active
+scene::graph()->draw();
+
+// Pop restores parent state (blend enabled, stencil disabled)
+framebuffer::stack()->pop();
+```
+
+**Combining Both Modes Example**
+
+```cpp
+// Pre-configure state for specific rendering pass
+auto shadow_state = std::make_shared<framebuffer::RenderState>();
+shadow_state->blend().setEnabled(false);
+shadow_state->stencil().setTest(false);
+
+// Apply shadow state atomically
+framebuffer::stack()->push(shadow_fbo, shadow_state);
+// Render shadow map...
+framebuffer::stack()->pop();
+
+// Push another FBO in inherit mode
+framebuffer::stack()->push(scene_fbo);
+// Inherits state from parent (blend/stencil disabled)
+
+// Modify live for transparent objects
+framebuffer::stack()->blend().setEnabled(true);
+framebuffer::stack()->blend().setFunction(
+    framebuffer::BlendFactor::SrcAlpha,
+    framebuffer::BlendFactor::OneMinusSrcAlpha);
+// Render transparent objects...
+framebuffer::stack()->pop();
+```
+
+**FramebufferComponent Integration**
+
+Use `RenderState` with `FramebufferComponent` for declarative state management in the scene graph:
+
+```cpp
+// Create state for post-processing pass
+auto post_state = std::make_shared<framebuffer::RenderState>();
+post_state->blend().setEnabled(false);
+post_state->stencil().setTest(false);
+
+// Create FBO with state
+auto post_fbo = framebuffer::Framebuffer::MakePostProcessing(800, 600, "post_color");
+
+// Add to scene graph with state
+scene::graph()->addNode("PostProcess")
+    .with<component::FramebufferComponent>(post_fbo, post_state)
+    .with<component::ShaderComponent>(post_shader)
+    .addNode("Scene")
+        .with<component::GeometryComponent>(scene_geometry);
+
+// State is automatically applied when FramebufferComponent activates
+scene::graph()->draw();
+```
+
+**Stencil Masking Example**
+
+```cpp
+// First pass: Write to stencil buffer
+framebuffer::stack()->stencil().setTest(true);
+framebuffer::stack()->stencil().setFunction(
+    framebuffer::StencilFunc::Always, 1, 0xFF);
+framebuffer::stack()->stencil().setOperation(
+    framebuffer::StencilOp::Keep,
+    framebuffer::StencilOp::Keep,
+    framebuffer::StencilOp::Replace);
+framebuffer::stack()->stencil().setWriteMask(0xFF);
+
+// Render mask geometry (writes 1 to stencil)
+mask_geometry->Draw();
+
+// Second pass: Only render where stencil == 1
+framebuffer::stack()->stencil().setFunction(
+    framebuffer::StencilFunc::Equal, 1, 0xFF);
+framebuffer::stack()->stencil().setWriteMask(0x00);  // Don't modify stencil
+
+// Render masked content
+scene::graph()->draw();
+
+// Clear stencil buffer
+framebuffer::stack()->stencil().setClearValue(0);
+framebuffer::stack()->stencil().clearBuffer();
+```
+
+**Advanced Blending Example**
+
+```cpp
+// Separate RGB and Alpha blending
+framebuffer::stack()->blend().setEnabled(true);
+framebuffer::stack()->blend().setEquationSeparate(
+    framebuffer::BlendEquation::Add,           // RGB equation
+    framebuffer::BlendEquation::Max);          // Alpha equation
+
+framebuffer::stack()->blend().setFunctionSeparate(
+    framebuffer::BlendFactor::SrcAlpha,        // RGB source
+    framebuffer::BlendFactor::OneMinusSrcAlpha, // RGB dest
+    framebuffer::BlendFactor::One,             // Alpha source
+    framebuffer::BlendFactor::One);            // Alpha dest
+
+// Render with custom blending
+scene::graph()->draw();
+```
+
+**State Caching and Performance**
+
+The framebuffer stack automatically caches GPU state to minimize redundant OpenGL calls:
+
+```cpp
+// First call: Issues glEnable(GL_BLEND)
+framebuffer::stack()->blend().setEnabled(true);
+
+// Second call: Skipped (already enabled)
+framebuffer::stack()->blend().setEnabled(true);
+
+// Only issues GL calls when state actually changes
+framebuffer::stack()->blend().setFunction(
+    framebuffer::BlendFactor::One,
+    framebuffer::BlendFactor::Zero);  // GL call issued
+
+framebuffer::stack()->blend().setFunction(
+    framebuffer::BlendFactor::One,
+    framebuffer::BlendFactor::Zero);  // Skipped (same values)
+```
+
+**Important Notes:**
+
+- **State Inheritance:** Child framebuffers inherit parent stencil/blend state in inherit mode
+- **State Restoration:** `pop()` automatically restores previous state via `syncGpuToState()`
+- **GPU Caching:** Redundant OpenGL calls are automatically skipped
+- **Immediate Operations:** `setClearValue()` and `clearBuffer()` execute immediately without caching
+- **Atomic Application:** Apply mode ensures complete state is set atomically on push
+- **Live Modification:** Both modes support live state modification after push
 
 
 ### Lighting System

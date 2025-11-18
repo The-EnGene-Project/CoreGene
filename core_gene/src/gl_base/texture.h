@@ -374,10 +374,6 @@ inline std::function<int()> getUnitProvider(const std::string& samplerName) {
     };
 }
 
-} // namespace texture
-
-namespace texture {
-
 /**
  * @brief Returns a provider function for sampler uniforms (works for all sampler types).
  * 

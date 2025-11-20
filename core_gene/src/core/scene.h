@@ -173,6 +173,28 @@ public:
         name_map[new_name] = node_to_rename;
         return true;
     }
+    /**
+     * @brief Recursively removes a node and all its descendants from the registries.
+     * @param node The node to unregister along with its children.
+     */
+    void unregisterNodeRecursive(SceneNodePtr node) {
+        if (!node) return;
+        
+        // First, recursively unregister all children
+        for (int i = 0; i < node->getChildCount(); ++i) {
+            unregisterNodeRecursive(node->getChild(i));
+        }
+        
+        // Then unregister this node
+        name_map.erase(node->getName());
+        node_map.erase(node->getId());
+    }
+
+    /**
+     * @brief Removes a node from the scene graph by pointer.
+     * Also removes all descendants from the registries.
+     * @param node_to_remove The node to remove (cannot be null or root).
+     */
     void removeNode(SceneNodePtr node_to_remove) {
         if (!node_to_remove || node_to_remove == root) {
             std::cerr << "Cannot remove null or root node!" << std::endl;
@@ -183,8 +205,31 @@ public:
         if (parent) {
             parent->removeChild(node_to_remove);
         }
-        name_map.erase(node_to_remove->getName());
-        node_map.erase(node_to_remove->getId());
+        
+        // Recursively unregister this node and all its descendants
+        unregisterNodeRecursive(node_to_remove);
+    }
+
+    /**
+     * @brief Removes a node from the scene graph by name.
+     * Also removes all descendants from the registries.
+     * @param node_name The name of the node to remove (cannot be "root").
+     * @return true if the node was found and removed, false otherwise.
+     */
+    bool removeNode(const std::string& node_name) {
+        if (node_name == "root") {
+            std::cerr << "Cannot remove root node!" << std::endl;
+            return false;
+        }
+        
+        SceneNodePtr node = getNodeByName(node_name);
+        if (!node) {
+            std::cerr << "Node with name '" << node_name << "' not found!" << std::endl;
+            return false;
+        }
+        
+        removeNode(node);
+        return true;
     }
 
     SceneNodePtr duplicateNode(const std::string& source_name, const std::string& new_name) {

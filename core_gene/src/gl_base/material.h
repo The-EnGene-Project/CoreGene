@@ -234,6 +234,17 @@ public:
     }
 
     /**
+     * @brief Factory method to create an empty material with no properties.
+     * @return A MaterialPtr to a newly created empty Material.
+     *
+     * Creates a material with no default properties initialized.
+     * Use this when you want to manually set all properties without defaults.
+     */
+    static MaterialPtr Make() {
+        return MakeEmpty();
+    }
+
+    /**
      * @brief Factory method to create a standard PBR material from an RGB color.
      * @param rgb The base RGB color for the material.
      * @return A MaterialPtr to the newly created Material with PBR properties.

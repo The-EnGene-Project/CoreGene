@@ -411,6 +411,26 @@ public:
     }
 
     /**
+     * @brief Defines a global default value for a custom property.
+     * @param name The uniform name (e.g., "u_roughness").
+     * @param defaultValue The value to use when a material doesn't explicitly set this.
+     * * Adds the property to the Base State (Index 0). 
+     * Because push() copies the previous state, this ensures the key 
+     * always exists in the map, silencing warnings and preventing state leaks.
+     */
+    template<typename T>
+    void defineDefault(const std::string& name, const T& defaultValue) {
+        if (m_stack.empty()) return; // Should never happen given constructor
+        
+        // Insert into the Base State (Index 0)
+        // If it already exists, this does nothing (or you can force overwrite)
+        MaterialData& base = m_stack[0];
+        
+        // We use assignment to ensure we overwrite if it exists, or insert if new
+        base[name] = defaultValue; 
+    }
+
+    /**
      * @brief Configures shader with automatic uniform binding for all base state properties.
      * @param shader A shared pointer to the Shader to configure.
      *

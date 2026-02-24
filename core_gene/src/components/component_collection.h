@@ -89,7 +89,7 @@ public:
             if (auto derived_ptr = std::dynamic_pointer_cast<T>(base_ptr)) {
                 // Cast succeeded, so base_ptr *is* an instance of T or a subclass of T.
                 // Now check if it's unnamed.
-                if (derived_ptr->getName().empty()) {
+                if (derived_ptr->getName().empty()) { // BACALHAU
                     return derived_ptr;
                 }
             }

@@ -81,6 +81,9 @@ public:
 
             // Re-bake the shader to activate the new UBO bindings
             m_base_shader->Bake();
+
+            // Stretch the longer dimension to not deform the view space
+            active_cam->setAspectRatio(((float)m_height)/m_width);
         } else {
             std::cerr << "CRITICAL WARNING: SceneGraph failed to provide a default camera." << std::endl;
         }

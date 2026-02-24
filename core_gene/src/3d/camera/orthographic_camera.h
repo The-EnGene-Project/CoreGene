@@ -73,7 +73,7 @@ public:
      * @param near_plane The distance to the near clipping plane.
      * @param far_plane The distance to the far clipping plane.
      */
-    void setProjection(float left, float right, float bottom, float top, float near_plane = 0.1f, float far_plane = 100.0f) {
+    void setProjection(float left, float right, float bottom, float top, float near_plane = -1.0f, float far_plane = 100.0f) {
         m_left = left;
         m_right = right;
         m_bottom = bottom;
@@ -82,6 +82,31 @@ public:
         m_far_plane = far_plane;
         // Note: Changing projection does not dirty the view matrix.
     }
+
+    /**
+     * @brief Gets the current orthographic projection parameters.
+     * @return A vector containing {left, right, bottom, top, near_plane, far_plane}.
+     */
+    std::vector<float> getProjection() {
+        return {m_left, m_right, m_bottom, m_top, m_near_plane, m_far_plane};
+    }
+
+    /**
+     * @brief Sets the aspect ratio of the camera and adjusts the projection volume accordingly.
+     * @param height_to_width_ratio The desired aspect ratio (height divided by width).
+     */
+    void setAspectRatio(float height_to_width_ratio) override {
+        m_aspect_ratio = height_to_width_ratio;
+        if (m_aspect_ratio > 1.0) {
+            float delta = (m_top - m_bottom) * (m_aspect_ratio-1.0f)/2.0f;
+            m_top += delta;
+            m_bottom -= delta; 
+        } else {
+            float delta = (m_right - m_left) * (1.0f /m_aspect_ratio - 1.0f)/2.0f;
+            m_left -= delta;
+            m_right += delta;
+        }
+    } 
 
     // --- Overridden Interface ---
 

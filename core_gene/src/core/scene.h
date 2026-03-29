@@ -122,6 +122,11 @@ public:
      */
     SceneNodeBuilder addNode(const std::string& name);
 
+    // Factory: create a new SceneGraph instance (allows multiple scene graphs)
+    static SceneGraphPtr Make() {
+        return SceneGraphPtr(new SceneGraph());
+    }
+
     // --- Core Graph Management (used by the builder and for direct manipulation) ---
     SceneNodePtr getRoot() const { return root; }
 
